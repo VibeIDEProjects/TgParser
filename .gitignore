@@ -1,0 +1,29 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# Project data (local only)
+data/sessions/*
+!data/sessions/.gitkeep
+data/output/*
+!data/output/.gitkeep
+
+# IDE
+.vscode/vscodesync.json
+.vscode/vscodesync-local-backup/
+.vscodesync-quicktransfer/
+
+# OS
+Thumbs.db
+.DS_Store
+
+token

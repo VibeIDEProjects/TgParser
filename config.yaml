@@ -1,0 +1,15 @@
+# TgParser settings — safe to commit
+session_dir: data/sessions/
+output_dir: data/output/
+
+defaults:
+  message_limit: 100
+  output_format: json
+
+parsing:
+  scroll_delay_ms: 1500
+  max_scroll_attempts: 50
+
+browser:
+  headless: false   # false for QR auth, true for background parsing
+  slow_mo: 100      # delay between actions (ms)

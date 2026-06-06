@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tgparser-cli"
+version = "0.1.0"
+description = "Telegram channel parser — extract messages from open (MTProto) and closed (web) channels"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{name = "borodatych"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Communications :: Chat",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+dependencies = [
+    "telethon>=1.35",
+    "playwright>=1.45",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.2",
+    "click>=8.1",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+tgparser = "tgparser.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/borodatych/tgparser"
+Repository = "https://github.com/borodatych/tgparser"
+"Bug Tracker" = "https://github.com/borodatych/tgparser/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
