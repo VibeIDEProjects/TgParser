@@ -236,7 +236,12 @@ python -m build
 - [x] Инкрементальный парсинг
 - [ ] Поддержка Telegram Premium (MTProto)
 - [ ] Парсинг комментариев
-- [ ] GUI-интерфейс
+- [x] **GUI-интерфейс** (Фаза 7) — план в [docs/roadmap.md](docs/roadmap.md):
+    - [ ] TUI (Textual) или GUI (PyQt6/Tkinter)
+    - [ ] Окна: авторизация, парсинг, результаты/экспорт
+    - [ ] Прогресс-бар и лог в реальном времени
+    - [ ] Интеграция с существующими модулями
+    - [ ] Тесты и сборка standalone-приложения
 
 Полный roadmap: [docs/roadmap.md](docs/roadmap.md)
 
