@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-authors = [{name = "borodatych"}]
+authors = [{name = "VibeIDEProjects"}]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.11",
@@ -27,6 +27,7 @@ dependencies = [
     "click>=8.1",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "textual>=0.52.0",
 ]
 
 [project.optional-dependencies]
@@ -40,9 +41,9 @@ dev = [
 tgparser = "tgparser.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/borodatych/tgparser"
-Repository = "https://github.com/borodatych/tgparser"
-"Bug Tracker" = "https://github.com/borodatych/tgparser/issues"
+Homepage = "https://github.com/VibeIDEProjects/TgParser"
+Repository = "https://github.com/VibeIDEProjects/TgParser"
+"Bug Tracker" = "https://github.com/VibeIDEProjects/TgParser/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -633,5 +633,17 @@ def _parse_txt(path: Path) -> list[Message]:
     return messages
 
 
+
+@main.command(name="gui", help="Launch the graphical user interface (Textual TUI).")
+def gui_cmd():
+    """Launch the GUI interface using Textual."""
+    try:
+        from tgparser.gui import run_gui
+        run_gui()
+    except ImportError as e:
+        click.echo(f"Error: GUI dependencies not installed. Run: pip install textual\\n{e}", err=True)
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()
