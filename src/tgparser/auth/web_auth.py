@@ -102,7 +102,9 @@ class WebAuth:
         A full validity check (making a request with the session) is done
         later during parsing; here we only verify the file is present.
         """
-        return self.session_file.exists()
+        exists = self.session_file.exists()
+        logger.debug("[WebAuth] is_session_valid: %s (path=%s)", exists, self.session_file)
+        return exists
 
     async def check_session(self) -> bool:
         """Check if a valid saved session exists.
@@ -271,6 +273,10 @@ class WebAuth:
     def _save_session(self, context: BrowserContext) -> None:
         """Extract cookies and localStorage, write to JSON file."""
         cookies = context.cookies()
+        logger.debug("_save_session: got %d cookies from context.", len(cookies))
+        if cookies:
+            for c in cookies[:3]:
+                logger.debug("  cookie: name=%s domain=%s", c.get("name"), c.get("domain"))
         local_storage: dict[str, Any] = {}
         page = context.pages[0] if context.pages else None
         if page:
