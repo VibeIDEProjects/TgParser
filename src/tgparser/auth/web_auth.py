@@ -97,11 +97,11 @@ class WebAuth:
                 pw.stop()
 
     def is_session_valid(self) -> bool:
-        """Check whether a persisted session file exists and has cookies.
+        """Check whether a persisted session file exists and has valid data.
 
-        Only file existence check was not enough — an interrupted auth
-        could produce an empty file (cookies=[]).  This version also
-        verifies the file contains at least one cookie.
+        Telegram Web stores its auth in localStorage (``dc*`` keys), not in
+        cookies.  We therefore accept the session if *either* cookies or
+        localStorage contain meaningful data.
         """
         if not self.session_file.exists():
             logger.debug("is_session_valid: file not found (%s)", self.session_file)
@@ -112,11 +112,20 @@ class WebAuth:
                 logger.debug("is_session_valid: load_session returned None/empty")
                 return False
             cookies = data.get("cookies", [])
-            if not cookies:
-                logger.debug("is_session_valid: no cookies in session file")
-                return False
-            logger.debug("is_session_valid: valid (%d cookies)", len(cookies))
-            return True
+            local_storage = data.get("local_storage", {})
+            # Telegram Web auth keys in localStorage look like "dc2_authKey", "dc2_serverSalt", …
+            ls_has_auth = any(k.startswith("dc") for k in local_storage)
+            if cookies or ls_has_auth:
+                logger.debug(
+                    "is_session_valid: valid (cookies=%d, ls_keys=%d, ls_has_auth=%s)",
+                    len(cookies), len(local_storage), ls_has_auth,
+                )
+                return True
+            logger.debug(
+                "is_session_valid: no cookies and no dc* keys in localStorage "
+                "(cookies=%d, ls_keys=%d)", len(cookies), len(local_storage),
+            )
+            return False
         except Exception as exc:
             logger.warning("is_session_valid: error reading session file: %s", exc)
             return False
@@ -295,6 +304,17 @@ class WebAuth:
         local_storage: dict[str, Any] = {}
         page = context.pages[0] if context.pages else None
         if page:
+            # Wait for Telegram to populate localStorage (dc* keys)
+            try:
+                page.wait_for_function(
+                    "() => Object.keys(localStorage).some(k => k.startsWith('dc'))",
+                    timeout=15_000,
+                )
+            except Exception:
+                logger.warning(
+                    "localStorage dc* keys not found after 15s, "
+                    "will still save what's available."
+                )
             try:
                 local_storage = page.evaluate(
                     """() => {
