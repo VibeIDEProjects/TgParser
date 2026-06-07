@@ -103,6 +103,35 @@ class WebAuth:
         """
         return self.session_file.exists()
 
+    async def check_session(self) -> bool:
+        """Check if a valid saved session exists.
+
+        Returns True if the session file exists and appears usable.
+        Unlike :meth:`is_session_valid`, this also tries to load the file
+        to catch corruption.
+        """
+        if not self.session_file.exists():
+            return False
+        try:
+            data = load_cookies(self.session_file)
+            if not data.get("cookies", []) and not data.get("origins", []):
+                return False
+        except Exception:
+            return False
+        return True
+
+    async def authenticate(self) -> bool:
+        """Public wrapper around :meth:`login` for GUI convenience.
+
+        Returns:
+            True if authentication succeeded, False otherwise.
+        """
+        return await self.login()
+
+    async def save_session(self, page: Page) -> None:
+        """Save the current browser session to disk (public wrapper)."""
+        self._save_session(page.context)
+
     # ------------------------------------------------------------------
     # Navigation helpers
     # ------------------------------------------------------------------
