@@ -97,14 +97,29 @@ class WebAuth:
                 pw.stop()
 
     def is_session_valid(self) -> bool:
-        """Check whether a persisted session file exists (quick check).
+        """Check whether a persisted session file exists and has cookies.
 
-        A full validity check (making a request with the session) is done
-        later during parsing; here we only verify the file is present.
+        Only file existence check was not enough — an interrupted auth
+        could produce an empty file (cookies=[]).  This version also
+        verifies the file contains at least one cookie.
         """
-        exists = self.session_file.exists()
-        logger.debug("[WebAuth] is_session_valid: %s (path=%s)", exists, self.session_file)
-        return exists
+        if not self.session_file.exists():
+            logger.debug("is_session_valid: file not found (%s)", self.session_file)
+            return False
+        try:
+            data = self.load_session()
+            if not data:
+                logger.debug("is_session_valid: load_session returned None/empty")
+                return False
+            cookies = data.get("cookies", [])
+            if not cookies:
+                logger.debug("is_session_valid: no cookies in session file")
+                return False
+            logger.debug("is_session_valid: valid (%d cookies)", len(cookies))
+            return True
+        except Exception as exc:
+            logger.warning("is_session_valid: error reading session file: %s", exc)
+            return False
 
     async def check_session(self) -> bool:
         """Check if a valid saved session exists.
