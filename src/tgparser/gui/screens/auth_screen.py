@@ -6,6 +6,8 @@ import asyncio
 import logging
 from typing import ClassVar
 
+logger = logging.getLogger(__name__)
+
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -255,12 +257,16 @@ class AuthScreen(Screen[None]):
     async def _do_web_auth(self) -> None:
         """Perform Web (QR) authentication."""
         log = self.query_one("#web-auth-log", RichLog)
-        log.write("\U0001f504 Opening browser for QR authentication...")
+        msg = "\U0001f504 Opening browser for QR authentication..."
+        log.write(msg)
+        logger.info(msg)
 
         self._web_auth = WebAuth()
 
         if await self._web_auth.check_session():
-            log.write("\u2705 Existing web session found! Using it.")
+            msg = "\u2705 Existing web session found! Using it."
+            log.write(msg)
+            logger.info(msg)
             self.app.is_authenticated = True
             self.app.auth_type = "web"
             self.query_one("#status-message", Static).update(
@@ -270,11 +276,31 @@ class AuthScreen(Screen[None]):
             self.dismiss(True)
             return
 
-        log.write("\U0001f504 Launching browser for QR code...")
-        success = await self._web_auth.authenticate()
+        msg = "\U0001f504 Launching browser for QR code..."
+        log.write(msg)
+        logger.info(msg)
+
+        try:
+            success = await asyncio.wait_for(
+                self._web_auth.authenticate(), timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Web authentication timed out after 60 seconds.")
+            msg = "\u274c Web authentication timed out."
+            log.write(msg)
+            self.query_one("#status-message", Static).update(msg)
+            return
+        except Exception as exc:
+            logger.exception("Web authentication failed with exception.")
+            msg = f"\u274c Web authentication failed: {exc}"
+            log.write(msg)
+            self.query_one("#status-message", Static).update(msg)
+            return
 
         if success:
-            log.write("\u2705 Web authentication successful!")
+            msg = "\u2705 Web authentication successful!"
+            log.write(msg)
+            logger.info(msg)
             self.app.is_authenticated = True
             self.app.auth_type = "web"
             self.query_one("#status-message", Static).update(
@@ -283,7 +309,9 @@ class AuthScreen(Screen[None]):
             await asyncio.sleep(1.5)
             self.dismiss(True)
         else:
-            log.write("\u274c Web authentication failed or was cancelled.")
+            msg = "\u274c Web authentication failed or was cancelled."
+            log.write(msg)
+            logger.warning(msg)
             self.query_one("#status-message", Static).update(
                 "\u274c Web authentication failed."
             )

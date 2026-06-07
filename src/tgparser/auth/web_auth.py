@@ -178,9 +178,34 @@ class WebAuth:
     def _wait_for_login_complete(self, page: Page) -> None:
         """Wait for a URL change indicating successful login (redirect to /chat)."""
         page.wait_for_url("**/k/**", timeout=LOGIN_WAIT_TIMEOUT_S * 1000)
-        # Additional confirmation: wait for the chat list container
-        page.wait_for_selector(".chatlist", timeout=10_000)
-        logger.info("Login confirmed — chat list visible.")
+        # Additional confirmation: wait for the chat list container (use multiple
+        # known selectors to be resilient against Telegram layout changes)
+        chat_selectors = [
+            ".chatlist",
+            ".chat-list",
+            ".chat_list",
+            ".chats-container",
+            ".dialogs",
+            ".chat-item-container",
+            ".im_dialog_wrap",
+            ".chats-list",
+        ]
+        for sel in chat_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=5_000)
+                logger.info("Login confirmed — chat list visible (selector='%s').", sel)
+                return
+            except PwTimeout:
+                continue
+        # If none of the known selectors matched, try a broader check: wait for
+        # any element that indicates the user is logged in (QR canvas gone).
+        try:
+            page.wait_for_selector("canvas.qr-canvas", state="hidden", timeout=5_000)
+            logger.info("Login confirmed — QR canvas hidden, assuming logged in.")
+        except PwTimeout:
+            raise PwTimeout(
+                "Could not detect chat list or login completion within timeout."
+            )
 
     def _retry_qr(self, page: Page) -> bool:
         """Look for a Retry/refresh button on the expired QR screen and click it.
