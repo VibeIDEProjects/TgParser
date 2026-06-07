@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from bs4 import BeautifulSoup, Tag
@@ -158,6 +159,7 @@ class WebParser:
         *,
         max_scroll_attempts: int | None = None,
         scroll_delay_ms: int | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> list[Message]:
         """Synchronous parse of a closed channel.
 
@@ -174,6 +176,8 @@ class WebParser:
         scroll_delay_ms : int | None
             Delay between scroll attempts (ms).  Falls back to
             ``parsing.scroll_delay_ms`` from config.
+        progress_callback : Callable[[str], None] | None
+            Optional callback for progress messages (called with a string).
 
         Returns
         -------
