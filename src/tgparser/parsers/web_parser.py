@@ -422,12 +422,16 @@ class WebParser:
         elements: list[Tag] = []
         for sel in _MESSAGE_ITEM_SELECTORS:
             found = soup.select(sel)
+            logger.debug("[web_parser] selector=%s -> %d elements", sel, len(found))
             if found:
                 elements = found
                 break
 
         if not elements:
-            logger.debug("No message elements found in current DOM.")
+            logger.info(
+                "[web_parser] No message elements found in DOM (html length=%d). "
+                "Page URL: %s", len(html), page.url,
+            )
             return []
 
         messages: list[Message] = []
