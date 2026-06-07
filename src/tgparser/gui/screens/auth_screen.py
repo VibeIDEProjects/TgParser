@@ -148,7 +148,11 @@ class AuthScreen(Screen[None]):
                                 id="code-input",
                                 password=True,
                             )
-                        yield RichLog(id="auth-log", highlight=True, markup=True)
+                        yield RichLog(
+                            id="auth-log",
+                            highlight=True,
+                            markup=True,
+                        )
 
                 with TabPane("Web (QR Code)", id="web"):
                     yield Static(
@@ -156,7 +160,11 @@ class AuthScreen(Screen[None]):
                         "and scan the QR code with your phone.[/]",
                         classes="help-text",
                     )
-                    yield RichLog(id="web-auth-log", highlight=True, markup=True)
+                    yield RichLog(
+                        id="web-auth-log",
+                        highlight=True,
+                        markup=True,
+                    )
 
             with Horizontal(id="auth-actions"):
                 yield Button("\u25b6 Start Auth", id="btn-auth-start", variant="success")

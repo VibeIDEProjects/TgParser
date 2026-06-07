@@ -177,7 +177,12 @@ class ResultScreen(Screen[None]):
                 yield Button("✕ Back", id="btn-back", variant="default")
 
             # Log
-            yield RichLog(id="export-log", highlight=True, markup=True, wrap=True)
+            yield RichLog(
+                id="export-log",
+                highlight=True,
+                markup=True,
+                wrap=True,
+            )
             yield Static("", id="status-message")
 
     def on_mount(self) -> None:

@@ -190,7 +190,15 @@ class ParseScreen(Screen[None]):
                 yield ProgressBar(id="progress-bar", total=100, show_eta=True)
                 yield Static("0 messages parsed", id="progress-label")
 
-            yield RichLog(id="parse-log", highlight=True, markup=True, wrap=True)
+            with Horizontal(id="log-actions"):
+                yield Button("📋 Copy", id="btn-copy-log", variant="default")
+                yield Button("🗑 Clear", id="btn-clear-log", variant="default")
+            yield RichLog(
+                id="parse-log",
+                highlight=True,
+                markup=True,
+                wrap=True,
+            )
             yield Static("", id="status-message")
 
     def on_mount(self) -> None:
@@ -412,6 +420,12 @@ class ParseScreen(Screen[None]):
             self.action_stop_parse()
         elif btn_id == "btn-back" or btn_id == "btn-back-header":
             self.action_go_back()
+        elif btn_id == "btn-copy-log":
+            log_text = self.query_one("#parse-log", RichLog).text
+            self.app.copy_to_clipboard(log_text)
+            self.notify("Log copied to clipboard!", severity="info")
+        elif btn_id == "btn-clear-log":
+            self.query_one("#parse-log", RichLog).clear()
 
     def action_go_back(self) -> None:
         """Go back to the main screen."""
