@@ -34,7 +34,8 @@ class WebAuth:
         headless: bool = False,
         slow_mo: int = 100,
     ) -> None:
-        self.session_dir = Path(session_dir or get_setting("session_dir", default="data/sessions/"))
+        default_session_dir = Path("~/.tgparser/sessions").expanduser()
+        self.session_dir = Path(session_dir or get_setting("session_dir", default=str(default_session_dir)))
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.session_file = self.session_dir / "web_session.json"
         self.headless = headless
