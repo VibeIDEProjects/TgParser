@@ -360,7 +360,9 @@ class WebAuth:
     def restore_session(self, context: BrowserContext) -> bool:
         """Restore cookies and localStorage into a browser context.
 
-        Returns True if at least one cookie was restored.
+        Returns True if at least one cookie or localStorage key was restored.
+        Telegram Web relies on localStorage (dc* keys) rather than cookies,
+        so an empty cookie list is acceptable as long as localStorage has data.
         """
         data = self.load_session()
         if not data:
@@ -368,15 +370,20 @@ class WebAuth:
             return False
 
         cookies = data.get("cookies", [])
+        ls_data = data.get("local_storage", {})
+
+        if not cookies and not ls_data:
+            logger.warning("Session file is empty (no cookies, no localStorage).")
+            return False
+
+        # Restore cookies (if any)
         if cookies:
             context.add_cookies(cookies)
             logger.debug("Restored %d cookies.", len(cookies))
         else:
-            logger.warning("Session file contains no cookies.")
-            return False
+            logger.debug("No cookies in session file (Telegram Web may not need them).")
 
         # Restore localStorage (requires a page on the right origin)
-        ls_data = data.get("local_storage", {})
         if ls_data:
             page = context.new_page()
             try:
