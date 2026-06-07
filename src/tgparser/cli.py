@@ -645,5 +645,102 @@ def gui_cmd():
         raise SystemExit(1)
 
 
+@main.command(name="init", help="Ensure 'tgparser' is accessible from any terminal.")
+@click.option("--auto", is_flag=True, help="Automatically add PATH entry (no prompts).")
+def init_cmd(auto: bool) -> None:
+    """Check if the tgparser Scripts folder is in PATH and help add it."""
+    import os
+    import platform
+    import subprocess
+    import sys
+
+    system = platform.system()
+
+    # Determine scripts directory
+    if system == "Windows":
+        scripts_dir = os.path.join(
+            os.environ.get("APPDATA", ""),
+            "Python",
+            f"Python{sys.version_info.major}{sys.version_info.minor}",
+            "Scripts",
+        )
+    else:
+        scripts_dir = os.path.expanduser("~/.local/bin")
+
+    if not os.path.isdir(scripts_dir):
+        click.echo(
+            f"⚠️  Scripts folder not found at:\n    {scripts_dir}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    if scripts_dir in path_dirs:
+        click.echo(f"✅ Scripts folder is already in PATH:\n    {scripts_dir}")
+        return
+
+    click.echo(f"📁 Scripts folder:\n    {scripts_dir}")
+    click.echo("❌ This folder is NOT in your PATH.")
+    click.echo("    The 'tgparser' command won't work until added.")
+
+    if auto:
+        _add_to_path_auto(system, scripts_dir)
+        return
+
+    if system == "Windows":
+        click.echo("\nTo add it manually, run this command in PowerShell:")
+        click.echo(
+            f'\n    [Environment]::SetEnvironmentVariable('
+            f'"Path", $env:Path + ";{scripts_dir}", "User")\n'
+        )
+        click.echo("Then restart your terminal.")
+    else:
+        click.echo("\nAdd this to ~/.bashrc (or ~/.zshrc):")
+        click.echo(f'\n    export PATH="$HOME/.local/bin:$PATH"\n')
+        click.echo("Then run: source ~/.bashrc")
+
+    if click.confirm("\nAutomatically add it now?", default=False):
+        _add_to_path_auto(system, scripts_dir)
+
+
+def _add_to_path_auto(system: str, scripts_dir: str) -> None:
+    """Add scripts_dir to user PATH automatically."""
+    import os
+    import subprocess
+
+    if system == "Windows":
+        try:
+            current_path = os.environ.get("PATH", "")
+            new_path = f"{current_path};{scripts_dir}" if current_path else scripts_dir
+            subprocess.run(
+                [
+                    "powershell",
+                    "-Command",
+                    f'[Environment]::SetEnvironmentVariable("Path", "{new_path}", "User")',
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            click.echo("✅ Path added. Restart your terminal.")
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"❌ Failed: {exc}")
+            raise SystemExit(1) from exc
+    else:
+        rc_file = os.path.expanduser("~/.bashrc")
+        if not os.path.isfile(rc_file):
+            rc_file = os.path.expanduser("~/.zshrc")
+        if not os.path.isfile(rc_file):
+            rc_file = os.path.expanduser("~/.profile")
+        line = f'\nexport PATH="$HOME/.local/bin:$PATH"\n'
+        try:
+            with open(rc_file, "a") as f:
+                f.write(line)
+            click.echo(f"✅ Added to {rc_file}. Run 'source {rc_file}' or restart.")
+        except OSError as exc:
+            click.echo(f"❌ Failed: {exc}")
+            raise SystemExit(1) from exc
+
+
 if __name__ == "__main__":
     main()

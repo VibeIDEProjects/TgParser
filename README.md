@@ -44,11 +44,41 @@ playwright install chromium
 ### Через pip
 
 ```bash
+# Установка
 pip install tgparser-cli
+
+# Обновление
+pip install --upgrade tgparser-cli
+
+# Установить Playwright браузеры (требуется для web-парсера)
 playwright install chromium
 ```
 
+> **💡 После установки через pip** может потребоваться добавить папку `Scripts` в `PATH`, чтобы команда `tgparser` была доступна из любого терминала.
+>
+> **Windows:**
+> 1. Найдите путь: обычно это `%APPDATA%\Python\Python<версия>\Scripts` (например, `%APPDATA%\Python\Python314\Scripts`)
+> 2. Добавьте его в PATH через PowerShell (от администратора):
+>    ```powershell
+>    [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:APPDATA\Python\Python314\Scripts", "User")
+>    ```
+>    Или вручную: **Системные свойства → Переменные среды** → добавить путь в `Path`.
+>
+> **Linux / macOS:**
+> 1. Путь обычно: `~/.local/bin`
+> 2. Добавьте в `~/.bashrc` (или `~/.zshrc`):
+>    ```bash
+>    export PATH="$HOME/.local/bin:$PATH"
+>    source ~/.bashrc
+>    ```
+>
+> Проверить, что `tgparser` доступен:
+> ```bash
+> tgparser --help
+> ```
+
 ---
+
 
 ## Настройка
 
