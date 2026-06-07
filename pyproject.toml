@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tgparser-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram channel parser — extract messages from open (MTProto) and closed (web) channels"
 readme = "README.md"
 license = "MIT"
@@ -34,11 +34,17 @@ dependencies = [
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
+    "textual-dev>=1.0",
     "ruff>=0.4",
+    "pyinstaller>=6.0",
 ]
 
 [project.scripts]
 tgparser = "tgparser.cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [project.urls]
 Homepage = "https://github.com/VibeIDEProjects/TgParser"

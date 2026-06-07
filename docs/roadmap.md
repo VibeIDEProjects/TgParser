@@ -86,8 +86,8 @@
     - всё в `gui/screens/result_screen.py`
 - [x] Интеграция с существующими модулями (auth, parsers, storage)
 - [x] Обработка и отображение ошибок в GUI (уведомления, лог)
-- [ ] Тестирование GUI (smoke-тесты, интеграционные тесты)
-- [ ] Сборка в standalone-приложение (PyInstaller / Nuitka)
+- [x] Тестирование GUI (smoke-тесты, интеграционные тесты)
+- [x] Сборка в standalone-приложение (PyInstaller / Nuitka)
 
 ---
 

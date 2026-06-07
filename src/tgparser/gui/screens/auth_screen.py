@@ -15,6 +15,7 @@ from textual.screen import Screen
 from textual.widgets import (
     Button,
     Input,
+    Label,
     RichLog,
     Static,
     TabbedContent,
@@ -104,8 +105,8 @@ class AuthScreen(Screen[None]):
 
     auth_in_progress: reactive[bool] = reactive(False)
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._web_auth: WebAuth | None = None
         self._mtproto_auth: MTProtoAuth | None = None
 

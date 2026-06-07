@@ -45,7 +45,7 @@ class TgParserApp(App[None]):
 
     def on_mount(self) -> None:
         """Handle app startup."""
-        self.push_screen(MainScreen())
+        self.push_screen(MainScreen(id="main-screen"))
 
     def action_toggle_dark(self) -> None:
         """Toggle between light and dark mode."""
@@ -74,17 +74,17 @@ class TgParserApp(App[None]):
     def open_auth_screen(self) -> None:
         """Navigate to the authentication screen."""
         from tgparser.gui.screens.auth_screen import AuthScreen
-        self.push_screen(AuthScreen())
+        self.push_screen(AuthScreen(id="auth-screen"))
 
     def open_parse_screen(self, channel: str, channel_type: str = "open") -> None:
         """Navigate to the parsing screen."""
         from tgparser.gui.screens.parse_screen import ParseScreen
-        self.push_screen(ParseScreen(channel=channel, channel_type=channel_type))
+        self.push_screen(ParseScreen(id="parse-screen", channel=channel, channel_type=channel_type))
 
     def open_result_screen(self, channel: str) -> None:
         """Navigate to the result/export screen."""
         from tgparser.gui.screens.result_screen import ResultScreen
-        self.push_screen(ResultScreen(channel=channel))
+        self.push_screen(ResultScreen(id="result-screen", channel=channel))
 
 
 def run_gui() -> None:

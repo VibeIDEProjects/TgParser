@@ -144,6 +144,26 @@ tgparser export --input data/output/messages.json --format sqlite --output data/
 tgparser export --input data/output/messages.json --incremental
 ```
 
+### GUI (графический интерфейс)
+
+TgParser поставляется с текстовым графическим интерфейсом, построенным на [Textual](https://textual.textualize.io/).
+
+```bash
+# Запуск GUI
+tgparser gui
+
+# Или напрямую через модуль
+python -m tgparser.gui
+```
+
+GUI предоставляет удобный интерфейс для:
+- Авторизации (web и MTProto)
+- Парсинга каналов с настройками
+- Просмотра результатов
+- Управления сохранёнными каналами
+
+> **Примечание:** GUI — рекомендуемый способ взаимодействия для большинства пользователей.
+
 ---
 
 ## Примеры
@@ -193,31 +213,6 @@ tgparser/
 └── README.md              # Этот файл
 ```
 
----
-
-## Разработка
-
-### Запуск тестов
-
-```bash
-pytest tests/ -v
-```
-
-### Линтинг и форматирование
-
-```bash
-ruff check src/ tests/
-ruff format src/ tests/
-```
-
-### Сборка пакета
-
-```bash
-python -m build
-```
-
----
-
 ## Совместимость
 
 - **Python**: 3.11, 3.12
@@ -225,6 +220,42 @@ python -m build
 - **Браузер**: Chromium (устанавливается через `playwright install chromium`)
 
 ---
+
+## Разработка и тестирование
+
+```bash
+# Запуск всех тестов
+pytest tests -v
+
+# Запуск только smoke-тестов GUI
+pytest tests/test_gui_smoke.py -v
+
+# Запуск только интеграционных тестов GUI
+pytest tests/test_gui_integration.py -v
+
+# Форматирование кода
+ruff format src/tgparser tests
+
+# Линтинг
+ruff check src/tgparser tests
+```
+
+## Сборка standalone-приложения
+
+Для сборки в единый исполняемый файл используется PyInstaller:
+
+```bash
+# Установить зависимости
+pip install -e ".[dev]"
+
+# Собрать one-file executable
+python bin/build_standalone.py
+
+# Собрать one-directory bundle
+python bin/build_standalone.py --onedir
+```
+
+Готовый исполняемый файл будет в папке `dist/`.
 
 ## Планы
 
@@ -237,11 +268,11 @@ python -m build
 - [ ] Поддержка Telegram Premium (MTProto)
 - [ ] Парсинг комментариев
 - [x] **GUI-интерфейс** (Фаза 7) — план в [docs/roadmap.md](docs/roadmap.md):
-    - [ ] TUI (Textual) или GUI (PyQt6/Tkinter)
-    - [ ] Окна: авторизация, парсинг, результаты/экспорт
-    - [ ] Прогресс-бар и лог в реальном времени
-    - [ ] Интеграция с существующими модулями
-    - [ ] Тесты и сборка standalone-приложения
+- [x] TUI (Textual) — текстовый графический интерфейс реализован
+- [x] Окна: авторизация, парсинг, результаты/экспорт
+- [x] Прогресс-бар и лог в реальном времени
+- [x] Интеграция с существующими модулями
+- [x] Тесты (smoke + интеграционные) и сборка (PyInstaller)
 
 Полный roadmap: [docs/roadmap.md](docs/roadmap.md)
 

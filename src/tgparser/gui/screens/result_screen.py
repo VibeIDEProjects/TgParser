@@ -122,8 +122,8 @@ class ResultScreen(Screen[None]):
 
     export_in_progress: reactive[bool] = reactive(False)
 
-    def __init__(self, channel: str) -> None:
-        super().__init__()
+    def __init__(self, channel: str, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._channel = channel
         self._messages: list[Message] = []
 

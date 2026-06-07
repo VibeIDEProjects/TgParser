@@ -26,8 +26,8 @@ logger = logging.getLogger("tgparser")
 class ChannelTable(DataTable):
     """Table showing parsed channels and their status."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
         self.add_columns("Channel", "Type", "Last Parsed", "Messages")
         self._channels: dict[str, dict] = {}
 
@@ -209,7 +209,7 @@ class MainScreen(Screen[None]):
             self.app.open_parse_screen(channel)
         else:
             from tgparser.gui.screens.parse_screen import ParseScreen
-            self.app.push_screen(ParseScreen(channel=""))
+            self.app.push_screen(ParseScreen(id="parse-screen", channel=""))
 
     def action_export(self) -> None:
         """Open result/export screen."""

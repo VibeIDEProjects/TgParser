@@ -16,6 +16,7 @@ from textual.screen import Screen
 from textual.widgets import (
     Button,
     Input,
+    Label,
     ProgressBar,
     RichLog,
     Select,
@@ -119,8 +120,8 @@ class ParseScreen(Screen[None]):
     progress_total: reactive[int] = reactive(0)
     progress_value: reactive[int] = reactive(0)
 
-    def __init__(self, channel: str = "", channel_type: str = "open") -> None:
-        super().__init__()
+    def __init__(self, channel: str = "", channel_type: str = "open", **kwargs) -> None:
+        super().__init__(**kwargs)
         self._channel = channel
         self._channel_type = channel_type
         self._messages: list[Message] = []
