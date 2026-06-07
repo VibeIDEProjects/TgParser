@@ -214,7 +214,17 @@ class WebParser:
             )
 
             if not self._web_auth.restore_session(context):
-                raise RuntimeError("Failed to restore web session into browser context.")
+                # Gather debug info
+                info = (
+                    f"session_file={self._web_auth.session_file!s}, "
+                    f"exists={self._web_auth.session_file.exists()}, "
+                    f"is_valid={self._web_auth.is_session_valid()}"
+                )
+                raise RuntimeError(
+                    "Failed to restore web session into browser context. "
+                    f"[{info}] "
+                    "Please authenticate first via 'tgparser auth' or the Auth screen."
+                )
 
             page = context.new_page()
             page.set_default_timeout(self._timeout_ms)

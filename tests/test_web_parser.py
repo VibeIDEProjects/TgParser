@@ -29,9 +29,12 @@ SAMPLE_MSG_EMPTY = '<div class="bubble"><div class="bubble-content"></div></div>
 
 @pytest.fixture
 def mock_web_auth() -> WebAuth:
+    from pathlib import Path
     auth = MagicMock(spec=WebAuth)
     auth.is_session_valid.return_value = True
     auth.restore_session.return_value = True
+    # Provide a dummy session_file for debug messages
+    auth.session_file = Path("/tmp/test_session.json")
     return auth
 
 
