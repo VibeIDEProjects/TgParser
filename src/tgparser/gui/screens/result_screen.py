@@ -10,6 +10,7 @@ from typing import ClassVar
 
 from textual import work
 from textual.app import ComposeResult
+from textual.markup import escape
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive

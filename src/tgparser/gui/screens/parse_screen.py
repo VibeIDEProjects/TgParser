@@ -11,6 +11,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.markup import escape
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import (
@@ -286,9 +287,9 @@ class ParseScreen(Screen[None]):
             log.write("\u23f9 Parsing cancelled.")
         except Exception as exc:
             logger.exception("Parsing failed")
-            log.write(f"\u274c Parsing error: {exc}")
+            log.write(f"\u274c Parsing error: {escape(str(exc))}")
             self.query_one("#status-message", Static).update(
-                f"\u274c Error: {exc}"
+                f"\u274c Error: {escape(str(exc))}"
             )
         finally:
             self.is_parsing = False
