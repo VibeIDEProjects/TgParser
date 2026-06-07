@@ -385,7 +385,7 @@ class ParseScreen(Screen[None]):
         scroll_delay = get_setting("parsing", "scroll_delay_ms", default=1500)
         max_scroll = get_setting("parsing", "max_scroll_attempts", default=50)
 
-        messages = await web_parser.parse_channel(
+        messages = await web_parser.parse(
             channel_url=channel,
             limit=limit,
             scroll_delay_ms=scroll_delay,
