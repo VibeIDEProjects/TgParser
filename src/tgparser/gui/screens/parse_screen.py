@@ -53,11 +53,16 @@ class ParseScreen(Screen[None]):
         padding: 1;
     }
 
-    #parse-title {
-        text-style: bold;
-        content-align: center top;
-        margin-bottom: 1;
-    }
+	    #parse-header {
+	        align: left middle;
+	        margin-bottom: 1;
+	    }
+
+	    #parse-title {
+	        text-style: bold;
+	        content-align: center top;
+	        margin-bottom: 1;
+	    }
 
     #config-section {
         height: auto;
@@ -130,7 +135,9 @@ class ParseScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         """Create child widgets."""
         with Container(id="parse-container"):
-            yield Static("\u25b6 [bold]Parse Channel[/]", id="parse-title")
+            with Horizontal(id="parse-header"):
+                yield Button("\u2190 Back", id="btn-back-header", variant="default")
+                yield Static("\u25b6 [bold]Parse Channel[/]", id="parse-title")
 
             with Vertical(id="config-section"):
                 with Horizontal(classes="input-row"):
@@ -403,7 +410,7 @@ class ParseScreen(Screen[None]):
             self.action_start_parse()
         elif btn_id == "btn-stop":
             self.action_stop_parse()
-        elif btn_id == "btn-back":
+        elif btn_id == "btn-back" or btn_id == "btn-back-header":
             self.action_go_back()
 
     def action_go_back(self) -> None:

@@ -53,11 +53,16 @@ class ResultScreen(Screen[None]):
         padding: 1;
     }
 
-    #result-title {
-        text-style: bold;
-        content-align: center top;
-        margin-bottom: 1;
-    }
+	    #result-header {
+	        align: left middle;
+	        margin-bottom: 1;
+	    }
+
+	    #result-title {
+	        text-style: bold;
+	        content-align: center top;
+	        margin-bottom: 1;
+	    }
 
     #messages-table {
         height: 1fr;
@@ -130,7 +135,9 @@ class ResultScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         """Create child widgets."""
         with Container(id="result-container"):
-            yield Static("📋 [bold]Results & Export[/]", id="result-title")
+            with Horizontal(id="result-header"):
+                yield Button("\u2190 Back", id="btn-back-header", variant="default")
+                yield Static("📋 [bold]Results & Export[/]", id="result-title")
 
             # Messages table
             yield DataTable(id="messages-table")
@@ -342,7 +349,7 @@ class ResultScreen(Screen[None]):
             self.action_export()
         elif btn_id == "btn-refresh":
             self._load_messages()
-        elif btn_id == "btn-back":
+        elif btn_id == "btn-back" or btn_id == "btn-back-header":
             self.action_go_back()
 
     def action_go_back(self) -> None:
