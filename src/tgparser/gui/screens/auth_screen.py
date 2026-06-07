@@ -25,7 +25,7 @@ from textual.widgets import (
 )
 
 from tgparser.auth.mtproto_auth import MTProtoAuth
-from tgparser.auth.web_auth import WebAuth
+from tgparser.auth.web_auth import WebAuth, LOGIN_WAIT_TIMEOUT_S
 from tgparser.config import get_secret
 
 logger = logging.getLogger("tgparser")
@@ -282,7 +282,7 @@ class AuthScreen(Screen[None]):
 
         try:
             success = await asyncio.wait_for(
-                self._web_auth.authenticate(), timeout=60.0
+                self._web_auth.authenticate(), timeout=LOGIN_WAIT_TIMEOUT_S + 10
             )
         except asyncio.TimeoutError:
             logger.error("Web authentication timed out after 60 seconds.")
