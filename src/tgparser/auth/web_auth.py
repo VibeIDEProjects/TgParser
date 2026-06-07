@@ -123,10 +123,14 @@ class WebAuth:
     async def authenticate(self) -> bool:
         """Public wrapper around :meth:`login` for GUI convenience.
 
+        Runs the synchronous :meth:`login` in a background thread so it
+        can be awaited from the GUI event loop.
+
         Returns:
             True if authentication succeeded, False otherwise.
         """
-        return await self.login()
+        import asyncio
+        return await asyncio.to_thread(self.login)
 
     async def save_session(self, page: Page) -> None:
         """Save the current browser session to disk (public wrapper)."""
