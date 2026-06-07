@@ -215,11 +215,19 @@ class WebParser:
 
             if not self._web_auth.restore_session(context):
                 # Gather debug info
+                import json
                 info = (
                     f"session_file={self._web_auth.session_file!s}, "
                     f"exists={self._web_auth.session_file.exists()}, "
                     f"is_valid={self._web_auth.is_session_valid()}"
                 )
+                try:
+                    raw = self._web_auth.session_file.read_text()
+                    data = json.loads(raw)
+                    info += f", cookies_in_file={len(data.get('cookies', []))}"
+                    info += f", ls_keys={len(data.get('local_storage', {}))}"
+                except Exception as exc:
+                    info += f", read_session_file_error={exc}"
                 raise RuntimeError(
                     "Failed to restore web session into browser context. "
                     f"[{info}] "
