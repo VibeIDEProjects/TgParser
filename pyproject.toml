@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tgparser-cli"
-version = "0.2.8"
+version = "0.2.9"
 description = "Telegram channel parser — extract messages from open (MTProto) and closed (web) channels"
 readme = "README.md"
 license = "MIT"

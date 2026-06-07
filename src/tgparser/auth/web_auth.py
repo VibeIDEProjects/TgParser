@@ -150,6 +150,12 @@ class WebAuth:
 
         Raises PwTimeout if the user never scans within the overall time budget.
         """
+        # If there is no QR canvas at all, we might already be logged in
+        if not page.query_selector("canvas.qr-canvas"):
+            logger.info("QR canvas not found — checking if already logged in...")
+            self._wait_for_login_complete(page)
+            return
+
         for attempt in range(1, QR_RETRY_COUNT + 1):
             logger.info(
                 "QR attempt %d/%d — waiting up to %ds...",
