@@ -131,12 +131,12 @@ class WebParser:
 
     def __init__(
         self,
-        web_auth: WebAuth,
+        web_auth: WebAuth | None = None,
         headless: bool | None = None,
         timeout_ms: int = 30_000,
         slow_mo: int | None = None,
     ) -> None:
-        self._web_auth = web_auth
+        self._web_auth = web_auth or WebAuth()
         self._headless = (
             headless if headless is not None
             else bool(get_setting("browser", "headless", default=True))
