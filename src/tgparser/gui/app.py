@@ -27,7 +27,7 @@ class TgParserApp(App[None]):
     """
 
     BINDINGS: ClassVar = [
-        Binding("ctrl+c", "quit", "Quit", priority=True),
+        Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+d", "toggle_dark", "Toggle dark mode"),
         Binding("f1", "show_about", "About", priority=False),
     ]
