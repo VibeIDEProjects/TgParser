@@ -18,10 +18,10 @@ from textual.widgets import (
     Input,
     Label,
     ProgressBar,
-    RichLog,
     Select,
     Static,
 )
+from tgparser.gui.widgets.copyable_rich_log import CopyableRichLog
 
 from tgparser.auth.mtproto_auth import MTProtoAuth
 from tgparser.config import get_secret, get_setting
@@ -193,7 +193,7 @@ class ParseScreen(Screen[None]):
             with Horizontal(id="log-actions"):
                 yield Button("📋 Copy", id="btn-copy-log", variant="default")
                 yield Button("🗑 Clear", id="btn-clear-log", variant="default")
-            yield RichLog(
+            yield CopyableRichLog(
                 id="parse-log",
                 highlight=True,
                 markup=True,
@@ -259,7 +259,7 @@ class ParseScreen(Screen[None]):
         self._cancel_event.clear()
         self._messages = []
 
-        log = self.query_one("#parse-log", RichLog)
+        log = self.query_one("#parse-log", CopyableRichLog)
         log.clear()
         log.write(
             f"\U0001f504 Starting parsing of [bold]{channel}[/] ({channel_type})..."
@@ -318,7 +318,7 @@ class ParseScreen(Screen[None]):
         limit: int,
         date_from: datetime | None,
         date_to: datetime | None,
-        log: RichLog,
+        log: CopyableRichLog,
         progress_bar: ProgressBar,
     ) -> None:
         """Parse an open channel via MTProto."""
@@ -367,7 +367,7 @@ class ParseScreen(Screen[None]):
         limit: int,
         date_from: datetime | None,
         date_to: datetime | None,
-        log: RichLog,
+        log: CopyableRichLog,
         progress_bar: ProgressBar,
     ) -> None:
         """Parse a closed channel via web (Playwright)."""
@@ -421,11 +421,12 @@ class ParseScreen(Screen[None]):
         elif btn_id == "btn-back" or btn_id == "btn-back-header":
             self.action_go_back()
         elif btn_id == "btn-copy-log":
-            log_text = self.query_one("#parse-log", RichLog).text
-            self.app.copy_to_clipboard(log_text)
+            log = self.query_one("#parse-log", CopyableRichLog)
+            text = log.copy_text()
+            self.app.copy_to_clipboard(text)
             self.notify("Log copied to clipboard!", severity="info")
         elif btn_id == "btn-clear-log":
-            self.query_one("#parse-log", RichLog).clear()
+            self.query_one("#parse-log", CopyableRichLog).clear()
 
     def action_go_back(self) -> None:
         """Go back to the main screen."""

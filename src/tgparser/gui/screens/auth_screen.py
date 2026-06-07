@@ -18,11 +18,11 @@ from textual.widgets import (
     Button,
     Input,
     Label,
-    RichLog,
     Static,
     TabbedContent,
     TabPane,
 )
+from tgparser.gui.widgets.copyable_rich_log import CopyableRichLog
 
 from tgparser.auth.mtproto_auth import MTProtoAuth
 from tgparser.auth.web_auth import WebAuth, LOGIN_WAIT_TIMEOUT_S
@@ -148,7 +148,7 @@ class AuthScreen(Screen[None]):
                                 id="code-input",
                                 password=True,
                             )
-                        yield RichLog(
+                        yield CopyableRichLog(
                             id="auth-log",
                             highlight=True,
                             markup=True,
@@ -160,7 +160,7 @@ class AuthScreen(Screen[None]):
                         "and scan the QR code with your phone.[/]",
                         classes="help-text",
                     )
-                    yield RichLog(
+                    yield CopyableRichLog(
                         id="web-auth-log",
                         highlight=True,
                         markup=True,
@@ -233,7 +233,7 @@ class AuthScreen(Screen[None]):
             )
             return
 
-        log = self.query_one("#auth-log", RichLog)
+        log = self.query_one("#auth-log", CopyableRichLog)
         log.write("\U0001f504 Initializing MTProto authentication...")
         self._mtproto_auth = MTProtoAuth(api_id=api_id, api_hash=api_hash)
 
@@ -264,7 +264,7 @@ class AuthScreen(Screen[None]):
 
     async def _do_web_auth(self) -> None:
         """Perform Web (QR) authentication."""
-        log = self.query_one("#web-auth-log", RichLog)
+        log = self.query_one("#web-auth-log", CopyableRichLog)
         msg = "\U0001f504 Opening browser for QR authentication..."
         log.write(msg)
         logger.info(msg)

@@ -18,10 +18,10 @@ from textual.widgets import (
     Button,
     DataTable,
     Input,
-    RichLog,
     Select,
     Static,
 )
+from tgparser.gui.widgets.copyable_rich_log import CopyableRichLog
 
 from tgparser.models import Message
 from tgparser.storage import save_messages, save_messages_incremental, OutputFormat
@@ -177,7 +177,7 @@ class ResultScreen(Screen[None]):
                 yield Button("✕ Back", id="btn-back", variant="default")
 
             # Log
-            yield RichLog(
+            yield CopyableRichLog(
                 id="export-log",
                 highlight=True,
                 markup=True,
@@ -284,7 +284,7 @@ class ResultScreen(Screen[None]):
             return
 
         self.export_in_progress = True
-        log = self.query_one("#export-log", RichLog)
+        log = self.query_one("#export-log", CopyableRichLog)
         log.clear()
         log.write("💾 Starting export...")
 
