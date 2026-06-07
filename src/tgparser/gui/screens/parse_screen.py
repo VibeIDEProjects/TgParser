@@ -340,10 +340,12 @@ class ParseScreen(Screen[None]):
         parser = MTProtoParser(client)
         log.write("\U0001f4e1 Connected to Telegram via MTProto...")
 
-        async def progress_callback(current: int, total_: int) -> None:
-            progress_bar.update(progress=current)
-            self.query_one("#progress-label", Static).update(
-                f"{current} messages parsed"
+        def progress_callback(current: int, total_: int) -> None:
+            # This runs in a thread – we must use call_from_thread for UI updates
+            self.app.call_from_thread(progress_bar.update, progress=current)
+            self.app.call_from_thread(
+                self.query_one("#progress-label", Static).update,
+                f"{current} messages parsed",
             )
 
         messages = await parser.parse_channel(

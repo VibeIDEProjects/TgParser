@@ -159,7 +159,7 @@ class WebParser:
         *,
         max_scroll_attempts: int | None = None,
         scroll_delay_ms: int | None = None,
-        progress_callback: Callable[[str], None] | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Message]:
         """Synchronous parse of a closed channel.
 
