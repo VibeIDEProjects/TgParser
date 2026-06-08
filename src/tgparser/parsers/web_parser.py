@@ -104,6 +104,38 @@ _AUTHOR_SELECTORS = [
     ".author",
     "[class*='peer-title' i]",
     "[class*='sender' i]",
+    # /a/ frontend
+    "[class*='ChatInfo']",
+    "[class*='chat-title' i]",
+    "[class*='top'] [class*='title' i]",
+    ".chat-info .title",
+    ".ChatInfo .title",
+    "h3[class*='title' i]",
+]
+
+# In the new /a/ frontend a real message is rendered as ``.message-list-item``
+# (an item in the middle column) containing a child with ``.Message``.
+# The left sidebar / chat list also uses ``.bubble`` so we explicitly avoid it.
+_INNER_MESSAGE_SELECTORS_A = [
+    ".message-list-item",
+    "[class*='message-list-item' i]",
+    "[class*='MiddleColumn'] .Message",
+    "[class*='MiddleColumn'] [class*='message-content' i]",
+    "[data-message-id] [class*='message-content' i]",
+    "[data-message-id]",
+    "[class*='Message']:not([class*='MessageList']):not([class*='MessageInput']):not([class*='MessageSend']):not([class*='Composer']):not([class*='MessageMeta']):not([class*='LastMessage'])",
+]
+
+# Scoped CSS selector passed to BeautifulSoup.  We restrict the search to the
+# middle column so that sidebar "bubbles" (chat-list items) are not picked up.
+_INNER_MESSAGE_SELECTORS_K = [
+    ".bubbles .bubble",
+    ".messages-container .message",
+    ".messages-container .bubble",
+    "#column-center .bubble",
+    "#column-center .message",
+    "#column-center [class*='bubble' i]",
+    "#column-center [class*='message' i]",
 ]
 
 _DATE_SELECTORS = [
@@ -289,30 +321,51 @@ class WebParser:
     # ------------------------------------------------------------------
 
     def _navigate_to_channel(self, page: Page, channel_url: str) -> str:
-        """Open the channel's page and return its display name."""
+        """Open the channel's page and return its display name.
+
+        The new /a/ frontend is an SPA.  In our testing, the only reliable
+        way to land on a channel is a direct ``page.goto()`` to the full URL
+        with the hash.  Any prior navigation to ``/a/`` first leaves the
+        SPA in a state that ignores later hash changes.
+        """
         # Detect which Telegram web frontend the user is using: /a/, /k/, /beta/
-        # Each has a different DOM.  We must navigate to the same one.
         base = "https://web.telegram.org/k/"
         if "web.telegram.org/a/" in channel_url:
             base = "https://web.telegram.org/a/"
         elif "web.telegram.org/beta/" in channel_url:
             base = "https://web.telegram.org/beta/"
         self._log_cb(f"\n  Detected Telegram frontend: {base.strip('/')}")
-        page.goto(base, wait_until="domcontentloaded")
-        self._wait_for_any_selector(
-            page, [".chatlist", ".chat-list", "#LeftColumn"], timeout=15_000
-        )
 
-        logger.info("Navigating to channel: %s", channel_url)
-        self._log_cb(f"  Navigating to channel: {channel_url}")
+        # Build the full URL.  We always go directly to the channel URL.
         hash_part = self._extract_hash(channel_url)
-        page.evaluate(f"window.location.hash = '{hash_part}'")
+        if channel_url.startswith("https://web.telegram.org/"):
+            target_url = channel_url
+        else:
+            target_url = f"{base}#{hash_part}"
+        self._log_cb(f"  page.goto({target_url!r})")
+        page.goto(target_url, wait_until="domcontentloaded")
 
-        self._wait_for_any_selector(page, _MESSAGE_CONTAINER_SELECTORS, timeout=15_000)
-        time.sleep(1.0)
+        # Step 2: wait until at least one real message is rendered.
+        try:
+            self._wait_for_any_selector(
+                page,
+                [
+                    "[data-message-id]",
+                    # /k/ legacy
+                    "#column-center .message",
+                    "#column-center .bubble",
+                    ".bubbles .bubble",
+                ],
+                timeout=30_000,
+            )
+        except Exception as exc:
+            self._log_cb(f"  WARN: messages not yet visible: {exc}")
+
+        # Give the SPA extra time to fully render the channel.
+        time.sleep(2.0)
 
         channel_name = self._extract_channel_name(page)
-        self._log_cb(f"  Channel identified as: {channel_name} (current URL: {page.url})")
+        self._log_cb(f"  Channel identified as: {channel_name!r} (current URL: {page.url})")
         logger.info("Channel identified as: %s", channel_name)
         return channel_name
 
@@ -331,18 +384,31 @@ class WebParser:
         return url
 
     @staticmethod
+    @staticmethod
     def _extract_channel_name(page: Page) -> str:
-        """Extract the channel title from the top bar of the chat view."""
-        for sel in _AUTHOR_SELECTORS:
+        """Extract the channel title from the top bar of the chat view.
+
+        The new /a/ frontend puts the title in ``[class*="ChatInfo"] [class*="title"]``.
+        The legacy /k/ frontend uses the document title (set to the channel name).
+        """
+        for sel in [
+            "[class*='ChatInfo'] [class*='title' i]",
+            "[class*='chat-info' i] [class*='title' i]",
+            "[class*='top'] [class*='title' i]",
+            ".peer-title",
+            ".sender-name",
+        ]:
             try:
                 el = page.query_selector(sel)
                 if el:
-                    return el.inner_text().strip()
+                    txt = (el.inner_text() or "").strip()
+                    if txt and len(txt) < 200:
+                        return txt
             except Exception:
-                pass
+                continue
         try:
             title = page.title()
-            if title and "Telegram" not in title:
+            if title and "Telegram" not in title and title.strip():
                 return title
         except Exception:
             pass
@@ -439,12 +505,32 @@ class WebParser:
         try:
             page.evaluate(
                 """() => {
-                    const container = document.querySelector(
-                        '.bubbles, .messages-container, #column-center, ' +
-                        '[data-list-id="chat"]'
-                    );
-                    if (container) {
-                        container.scrollTop = 0;
+                    // Find the message list container, preferring the new
+                    // MiddleColumn over the legacy selectors.
+                    const selectors = [
+                        '[class*="MiddleColumn"] [class*="scroller" i]',
+                        '[class*="MiddleColumn"] [class*="Scroll" i]',
+                        '[class*="MiddleColumn"] [class*="Container" i]',
+                        '[class*="MiddleColumn"]',
+                        '.bubbles',
+                        '.messages-container',
+                        '#column-center',
+                        '[data-list-id="chat"]',
+                    ];
+                    for (const sel of selectors) {
+                        const el = document.querySelector(sel);
+                        if (el) {
+                            // For virtualised lists the real scrollable
+                            // element is the parent scroller.
+                            let target = el;
+                            let parent = el.parentElement;
+                            while (parent && parent.scrollHeight > parent.clientHeight + 10) {
+                                target = parent;
+                                parent = parent.parentElement;
+                            }
+                            target.scrollTop = 0;
+                            return;
+                        }
                     }
                 }"""
             )
@@ -464,17 +550,46 @@ class WebParser:
         html = page.content()
         soup = BeautifulSoup(html, "html.parser")
 
+        cb = getattr(self, "_log_cb", None)
+        if cb is None:
+            cb = lambda m, _print=print: _print(m, flush=True)
+
+        # Pick the right selector list depending on the current frontend.
+        if "/a/" in page.url:
+            scoped_selectors = _INNER_MESSAGE_SELECTORS_A
+            cb("  Frontend: /a/ — using scoped MiddleColumn selectors")
+        else:
+            scoped_selectors = _INNER_MESSAGE_SELECTORS_K
+            cb("  Frontend: /k/ — using legacy #column-center selectors")
+
         elements: list[Tag] = []
-        for sel in _MESSAGE_ITEM_SELECTORS:
+        # First try the scoped selectors (only MiddleColumn / #column-center).
+        for sel in scoped_selectors:
             found = soup.select(sel)
-            cb = getattr(self, "_log_cb", None)
-            if cb is None:
-                cb = lambda m, _print=print: _print(m, flush=True)
             cb(f"  SELECTOR {sel} -> {len(found)} elements")
-            logger.debug("[web_parser] selector=%s -> %d elements", sel, len(found))
             if found:
                 elements = found
                 break
+
+        # Fall back to the generic selector list if the scoped list found nothing.
+        if not elements:
+            for sel in _MESSAGE_ITEM_SELECTORS:
+                found = soup.select(sel)
+                cb(f"  FALLBACK SELECTOR {sel} -> {len(found)} elements")
+                if found:
+                    elements = found
+                    break
+
+        if not elements:
+            cb(
+                f"  -> No message elements found (html len={len(html)}, "
+                f"url={page.url}, title={page.title()!r})"
+            )
+            logger.info(
+                "[web_parser] No message elements found in DOM (html length=%d). "
+                "Page URL: %s", len(html), page.url,
+            )
+            return []
 
         if not elements:
             cb = getattr(self, "_log_cb", None)

@@ -1,6 +1,7 @@
 """Web Telegram QR-code authentication via Playwright."""
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,14 @@ class WebAuth:
         slow_mo: int = 100,
     ) -> None:
         default_session_dir = Path("~/.tgparser/sessions").expanduser()
-        self.session_dir = Path(session_dir or get_setting("session_dir", default=str(default_session_dir)))
+        configured = get_setting("session_dir", default=str(default_session_dir))
+        if session_dir is not None:
+            resolved = Path(session_dir)
+        else:
+            resolved = Path(str(configured))
+            if not resolved.is_absolute():
+                resolved = default_session_dir
+        self.session_dir = resolved.expanduser()
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.session_file = self.session_dir / "web_session.json"
         self.headless = headless
@@ -45,14 +53,27 @@ class WebAuth:
     # Public API
     # ------------------------------------------------------------------
 
-    def login(self, force: bool = False) -> bool:
+    def login(self, force: bool = False, password: str | None = None) -> bool:
         """Open browser, show QR, wait for scan, save session.
+
+        The new ``/a/`` frontend has a three-stage login flow:
+        1. QR code is displayed → user scans it with the phone.
+        2. ``#auth-password-form`` is shown if 2FA is enabled.
+        3. Chat list appears once login is complete.
+
+        ``password`` is used to fill the 2FA form automatically.  If it's
+        None and the password form appears, the function returns False.
 
         Returns True on success, False on failure.
         """
         if not force and self.is_session_valid():
             logger.info("Valid session found at %s — skipping auth.", self.session_file)
             return True
+
+        if password is None:
+            password = os.environ.get("TG_TWOFA_PASSWORD")
+            if password:
+                logger.info("Using 2FA password from TG_TWOFA_PASSWORD env var.")
 
         logger.info(
             "Launching browser for QR authentication (headless=%s)...",
@@ -76,6 +97,8 @@ class WebAuth:
 
             self._navigate_to_login(page)
             self._wait_for_qr_until_scanned(page)
+            self._wait_for_password_if_needed(page, password)
+            self._wait_for_chat_list(page)
             self._save_session(context)
 
             logger.info(
@@ -268,6 +291,87 @@ class WebAuth:
             )
 
         logger.info("Login confirmed — QR canvas hidden.")
+
+    def _wait_for_password_if_needed(
+        self, page: Page, password: str | None
+    ) -> None:
+        """If 2FA is enabled, wait for the password form and fill it in.
+
+        Telegram Web ``/a/`` shows ``#auth-password-form`` after a successful
+        QR scan when the account has 2-Step Verification enabled.  If the
+        form doesn't appear within 5 seconds we assume 2FA is disabled.
+        """
+        try:
+            page.wait_for_selector(
+                "#auth-password-form", state="visible", timeout=5_000
+            )
+        except PwTimeout:
+            logger.info("No 2FA password form detected — continuing.")
+            return
+
+        logger.info("2FA password form detected — entering password.")
+        if not password:
+            # No programmatic password: wait for the user to enter it manually
+            # on the same browser window.  We just block until the form is
+            # submitted and the chat list appears.
+            logger.info(
+                "No 2FA password supplied — waiting up to 120s for the user to "
+                "type it in the browser."
+            )
+            try:
+                page.wait_for_selector(
+                    "#auth-password-form",
+                    state="hidden",
+                    timeout=120_000,
+                )
+            except PwTimeout:
+                logger.error("Timed out waiting for 2FA password entry.")
+                raise
+            return
+
+        try:
+            page.fill("#sign-in-password", password)
+            time.sleep(0.3)
+            page.press("#sign-in-password", "Enter")
+        except Exception as exc:
+            logger.error("Failed to enter 2FA password: %s", exc)
+            raise
+
+    def _wait_for_chat_list(self, page: Page) -> None:
+        """Wait for the chat list to appear after login is complete.
+
+        Different Telegram frontends use different selectors:
+        - ``/k/`` (legacy): ``#LeftColumn`` / ``.chat-list``
+        - ``/a/`` (new): ``#LeftColumn`` / ``.chatlist`` / ``.chat-background``
+
+        We accept any of them.
+        """
+        selectors = [
+            "#LeftColumn",
+            ".chatlist",
+            ".chat-list",
+            ".chat-background",
+            ".ChatList",
+            "[class*=ChatList]",
+            "[class*=MiddleColumn]",
+            "[class*=chat-list i]",
+        ]
+        logger.info("Waiting for chat list (3-stage flow)...")
+        last_err: Exception | None = None
+        for sel in selectors:
+            try:
+                page.wait_for_selector(sel, state="visible", timeout=10_000)
+                logger.info("Chat list detected via selector: %s", sel)
+                # Give a moment for the list to fully populate
+                time.sleep(1.0)
+                return
+            except PwTimeout as exc:
+                last_err = exc
+                continue
+        raise PwTimeout(
+            f"Chat list never appeared after login (selectors: {selectors}). "
+            f"Last error: {last_err}"
+        )
 
     def _retry_qr(self, page: Page) -> bool:
         """Look for a Retry/refresh button on the expired QR screen and click it.
