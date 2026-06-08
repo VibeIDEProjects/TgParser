@@ -7,7 +7,7 @@ from telethon.errors import (
     SessionPasswordNeededError,
 )
 
-from tgparser.config import get_secret, get_setting
+from tgparser.config import get_secret, get_setting, resolve_path
 from tgparser.utils import logger
 
 
@@ -35,10 +35,11 @@ class MTProtoAuth:
                 "Set TG_API_ID and TG_API_HASH in .env or pass explicitly."
             )
 
-        session_dir = Path(
-            session_dir or get_setting("session_dir", default="data/sessions/")
-        )
-        session_dir.mkdir(parents=True, exist_ok=True)
+        if session_dir:
+            session_dir = Path(session_dir).expanduser()
+            session_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            session_dir = resolve_path("session_dir")
         self.session_file = session_dir / "mtproto.session"
 
     # ------------------------------------------------------------------

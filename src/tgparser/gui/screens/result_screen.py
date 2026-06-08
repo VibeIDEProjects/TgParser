@@ -24,6 +24,7 @@ from textual.widgets import (
 )
 from tgparser.gui.widgets.copyable_rich_log import CopyableRichLog
 
+from tgparser.config import resolve_path
 from tgparser.models import Message
 from tgparser.storage import save_messages, save_messages_incremental, OutputFormat
 
@@ -158,7 +159,7 @@ class ResultScreen(Screen[None]):
                 with Horizontal(classes="input-row"):
                     yield Label("Output Path:")
                     yield Input(
-                        placeholder="Leave empty for default (data/output/<channel>)",
+                        placeholder=f"Leave empty for default ({resolve_path('output_dir')}/<channel>)",
                         id="output-path-input",
                     )
                 with Horizontal(classes="input-row"):
@@ -198,7 +199,7 @@ class ResultScreen(Screen[None]):
             self._messages = stored_messages
         else:
             # Try loading from disk
-            output_dir = Path("data/output") / self._channel
+            output_dir = resolve_path("output_dir") / self._channel
             if output_dir.exists():
                 json_files = list(output_dir.glob("*.json"))
                 if json_files:
@@ -266,8 +267,12 @@ class ResultScreen(Screen[None]):
         """Determine the output path."""
         path_input = self.query_one("#output-path-input", Input).value.strip()
         if path_input:
-            return Path(path_input)
-        return Path("data/output") / self._channel
+            p = Path(path_input).expanduser()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            return p
+        out = resolve_path("output_dir") / self._channel
+        out.mkdir(parents=True, exist_ok=True)
+        return out
 
     def _get_format(self) -> OutputFormat:
         """Get the selected output format."""

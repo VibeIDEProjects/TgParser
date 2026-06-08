@@ -11,6 +11,8 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
+from tgparser.config import resolve_path
+
 from textual.widgets import (
     Button,
     DataTable,
@@ -151,7 +153,7 @@ class MainScreen(Screen[None]):
 
     def _load_channels(self) -> None:
         """Load previously parsed channels from storage."""
-        output_dir = Path("data/output")
+        output_dir = resolve_path("output_dir")
         if not output_dir.exists():
             return
 

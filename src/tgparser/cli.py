@@ -13,7 +13,7 @@ import click
 
 from tgparser import __version__
 from tgparser.auth import MTProtoAuth, WebAuth
-from tgparser.config import get_setting
+from tgparser.config import get_setting, resolve_path
 from tgparser.models.message import Message
 from tgparser.parsers import MTProtoParser, WebParser
 from tgparser.storage import (
@@ -214,7 +214,11 @@ def parse_open(
     """
     effective_limit = limit or int(get_setting("message_limit", "100"))
     effective_fmt = output_fmt or get_setting("output_format", "json")
-    effective_dir = output_dir or get_setting("output_dir", "data/output")
+    if output_dir:
+        effective_dir = Path(output_dir).expanduser()
+        effective_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        effective_dir = resolve_path("output_dir")
 
     # Parse date filters
     df: datetime | None = None
