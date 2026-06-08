@@ -68,6 +68,11 @@ _MESSAGE_CONTAINER_SELECTORS = [
     ".messages-container",
     "#column-center .messages-container",
     "[data-list-id='chat']",
+    # New /a/ frontend
+    ".chat-background",
+    ".MiddleColumn",
+    "[class*='MiddleColumn' i]",
+    "[class*='messages' i]",
 ]
 
 _MESSAGE_ITEM_SELECTORS = [
@@ -76,6 +81,12 @@ _MESSAGE_ITEM_SELECTORS = [
     ".message",
     "div[class*='message' i]",
     ".chat-list .row",
+    # New /a/ frontend
+    ".Message",
+    ".message-list-item",
+    "[class*='Message' i][class*='bubble' i]",
+    "[data-message-id]",
+    "[class*='Bubble' i]",
 ]
 
 _TEXT_SELECTORS = [
@@ -279,13 +290,21 @@ class WebParser:
 
     def _navigate_to_channel(self, page: Page, channel_url: str) -> str:
         """Open the channel's page and return its display name."""
-        page.goto("https://web.telegram.org/k/", wait_until="domcontentloaded")
+        # Detect which Telegram web frontend the user is using: /a/, /k/, /beta/
+        # Each has a different DOM.  We must navigate to the same one.
+        base = "https://web.telegram.org/k/"
+        if "web.telegram.org/a/" in channel_url:
+            base = "https://web.telegram.org/a/"
+        elif "web.telegram.org/beta/" in channel_url:
+            base = "https://web.telegram.org/beta/"
+        self._log_cb(f"\n  Detected Telegram frontend: {base.strip('/')}")
+        page.goto(base, wait_until="domcontentloaded")
         self._wait_for_any_selector(
             page, [".chatlist", ".chat-list", "#LeftColumn"], timeout=15_000
         )
 
         logger.info("Navigating to channel: %s", channel_url)
-        self._log_cb(f"\n  Navigating to channel: {channel_url}")
+        self._log_cb(f"  Navigating to channel: {channel_url}")
         hash_part = self._extract_hash(channel_url)
         page.evaluate(f"window.location.hash = '{hash_part}'")
 
