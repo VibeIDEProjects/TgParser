@@ -160,6 +160,7 @@ class WebParser:
         max_scroll_attempts: int | None = None,
         scroll_delay_ms: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        log_callback: Callable[[str], None] | None = None,
     ) -> list[Message]:
         """Synchronous parse of a closed channel.
 
@@ -178,6 +179,9 @@ class WebParser:
             ``parsing.scroll_delay_ms`` from config.
         progress_callback : Callable[[str], None] | None
             Optional callback for progress messages (called with a string).
+        log_callback : Callable[[str], None] | None
+            Optional callback for detailed log lines (e.g. selector results,
+            current page URL).  Falls back to ``print(..., flush=True)``.
 
         Returns
         -------
@@ -194,6 +198,15 @@ class WebParser:
             if scroll_delay_ms is not None
             else int(get_setting("parsing", "scroll_delay_ms", default=1500) or 1500)
         )
+
+        def _emit(msg: str) -> None:
+            if log_callback is not None:
+                try:
+                    log_callback(msg)
+                except Exception:
+                    pass
+            print(msg, flush=True)
+        self._log_cb = _emit
 
         if not self._web_auth.is_session_valid():
             raise RuntimeError(
@@ -272,7 +285,7 @@ class WebParser:
         )
 
         logger.info("Navigating to channel: %s", channel_url)
-        print(f"\n  Navigating to channel: {channel_url}", flush=True)
+        self._log_cb(f"\n  Navigating to channel: {channel_url}")
         hash_part = self._extract_hash(channel_url)
         page.evaluate(f"window.location.hash = '{hash_part}'")
 
@@ -280,7 +293,7 @@ class WebParser:
         time.sleep(1.0)
 
         channel_name = self._extract_channel_name(page)
-        print(f"  Channel identified as: {channel_name} (current URL: {page.url})", flush=True)
+        self._log_cb(f"  Channel identified as: {channel_name} (current URL: {page.url})")
         logger.info("Channel identified as: %s", channel_name)
         return channel_name
 
@@ -351,6 +364,8 @@ class WebParser:
         all_messages: list[Message] = []
         streak_no_new = 0
 
+        cb = getattr(self, "_log_cb", None) or (lambda m, _p=print: _p(m, flush=True))
+
         for attempt in range(max_scroll_attempts):
             batch = self._parse_message_elements(page, channel_name)
             new_messages = [m for m in batch if m.id not in seen_ids]
@@ -368,10 +383,9 @@ class WebParser:
                     limit,
                 )
                 if attempt % 5 == 0 or len(new_messages) > 0:
-                    print(
+                    cb(
                         f"  Progress: {len(all_messages)}/{limit} messages "
-                        f"(scroll {attempt + 1}/{max_scroll_attempts})",
-                        flush=True,
+                        f"(scroll {attempt + 1}/{max_scroll_attempts})"
                     )
             else:
                 streak_no_new += 1
@@ -382,9 +396,8 @@ class WebParser:
                     streak_no_new,
                 )
                 if streak_no_new >= 3:
-                    print(
-                        f"  Reached top of channel (no new messages for {streak_no_new} scrolls)",
-                        flush=True,
+                    cb(
+                        f"  Reached top of channel (no new messages for {streak_no_new} scrolls)"
                     )
 
             if len(all_messages) >= limit:
@@ -435,15 +448,23 @@ class WebParser:
         elements: list[Tag] = []
         for sel in _MESSAGE_ITEM_SELECTORS:
             found = soup.select(sel)
-            # Debug output – will appear in the terminal that launched tgparser gui
-            print(f"  SELECTOR {sel} -> {len(found)} elements")
+            cb = getattr(self, "_log_cb", None)
+            if cb is None:
+                cb = lambda m, _print=print: _print(m, flush=True)
+            cb(f"  SELECTOR {sel} -> {len(found)} elements")
             logger.debug("[web_parser] selector=%s -> %d elements", sel, len(found))
             if found:
                 elements = found
                 break
 
         if not elements:
-            print(f"  -> No message elements found (html len={len(html)}, url={page.url})")
+            cb = getattr(self, "_log_cb", None)
+            if cb is None:
+                cb = lambda m, _print=print: _print(m, flush=True)
+            cb(
+                f"  -> No message elements found (html len={len(html)}, "
+                f"url={page.url}, title={page.title()!r})"
+            )
             logger.info(
                 "[web_parser] No message elements found in DOM (html length=%d). "
                 "Page URL: %s", len(html), page.url,

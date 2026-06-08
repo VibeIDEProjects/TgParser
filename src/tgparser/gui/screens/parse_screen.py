@@ -388,6 +388,13 @@ class ParseScreen(Screen[None]):
         scroll_delay = get_setting("parsing", "scroll_delay_ms", default=1500)
         max_scroll = get_setting("parsing", "max_scroll_attempts", default=50)
 
+        # Wrap log.write to also strip emojis RichLog dislikes and run in call_from_thread
+        def _log_callback(msg: str) -> None:
+            try:
+                self.call_from_thread(log.write, msg)
+            except Exception:
+                pass
+
         messages = await asyncio.to_thread(
             web_parser.parse,
             channel,
@@ -395,6 +402,7 @@ class ParseScreen(Screen[None]):
             max_scroll_attempts=max_scroll,
             scroll_delay_ms=scroll_delay,
             progress_callback=progress_callback,
+            log_callback=_log_callback,
         )
 
         if date_from:
