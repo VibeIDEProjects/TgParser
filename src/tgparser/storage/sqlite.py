@@ -116,3 +116,43 @@ def update_last_message_id(db_path: Path, channel: str, last_id: int) -> None:
         db.commit()
     finally:
         db.close()
+
+
+def insert_messages_ignore(db_path: Path, messages: list[Message]) -> None:
+    """Alias of :func:`save_messages` for clarity at the call-site."""
+    save_messages(db_path, messages)
+
+
+def get_seen_message_ids(db_path: Path, channel: str) -> set[int]:
+    """Return the set of message ids already stored for *channel*.
+
+    Reads from the ``messages`` table primarily.  Falls back to the
+    ``metadata`` row for the case where the watermark has been set but no
+    messages have been inserted yet (e.g. for compatibility with legacy
+    state files).
+    """
+    db = _get_connection(db_path)
+    try:
+        rows = db.execute(
+            "SELECT id FROM messages WHERE channel = ?", (channel,)
+        ).fetchall()
+        ids = {row["id"] for row in rows}
+        if not ids:
+            row = db.execute(
+                "SELECT last_message_id FROM metadata WHERE channel = ?", (channel,)
+            ).fetchone()
+            if row and row["last_message_id"] is not None:
+                ids.add(int(row["last_message_id"]))
+        return ids
+    finally:
+        db.close()
+
+
+def set_seen_message_ids(db_path: Path, channel: str, ids: set[int]) -> None:
+    """Persist the watermark ``last_message_id`` for *channel* in metadata.
+
+    The set itself is already reflected in the ``messages`` table — we only
+    update the max id so the metadata row stays consistent.
+    """
+    if ids:
+        update_last_message_id(db_path, channel, max(ids))

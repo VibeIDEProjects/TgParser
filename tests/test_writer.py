@@ -11,12 +11,13 @@ import pytest
 
 from tgparser.models.message import Message
 from tgparser.storage.writer import (
-    _save_last_message_id,
     _write_csv,
     _write_json,
+    _write_markdown,
     _write_sqlite,
     _write_txt,
     get_last_message_id,
+    get_seen_message_ids,
     save_messages,
     save_messages_incremental,
 )
@@ -307,28 +308,34 @@ def test_save_messages_incremental_no_new(tmp_output_dir: Path, sample_messages:
 
 
 def test_save_messages_incremental_partial_new(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
-    """Only messages with id > last_saved are included."""
+    """New run merges — combined file now contains the union of known messages."""
     # First run with only first 2 messages
     save_messages_incremental(
         sample_messages[:2], tmp_output_dir, "@test_channel", fmt="json"
     )
-    # Second run with all 3 — only the 3rd is new
+    # Second run with all 3 — combined file should now contain all 3.
     result = save_messages_incremental(
         sample_messages, tmp_output_dir, "@test_channel", fmt="json"
     )
     assert result is not None
     data = json.loads(result.read_text(encoding="utf-8"))
-    assert len(data) == 1
-    assert data[0]["id"] == 3
+    ids = {d["id"] for d in data}
+    assert ids == {1, 2, 3}
+    # The state file should mark all 3 as seen.
+    assert get_seen_message_ids(tmp_output_dir, "@test_channel") == {1, 2, 3}
 
 
 def test_save_messages_incremental_state_file(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
-    """State file is created and contains the correct last id."""
+    """State file is created and contains the full seen-id list."""
     save_messages_incremental(sample_messages, tmp_output_dir, "@test_channel", fmt="json")
     state_file = tmp_output_dir / "test_channel_state.json"
     assert state_file.exists()
     state = json.loads(state_file.read_text(encoding="utf-8"))
+    # Backwards compat: last_message_id is still set.
     assert state["last_message_id"] == 3
+    # New schema: full id set is also present.
+    assert sorted(state["message_ids"]) == [1, 2, 3]
+    assert state["count"] == 3
 
 
 # ------------------------------------------------------------------
@@ -339,33 +346,110 @@ def test_save_messages_incremental_state_file(tmp_output_dir: Path, sample_messa
 def test_get_last_message_id_none(tmp_output_dir: Path) -> None:
     """No state file → returns None."""
     assert get_last_message_id(tmp_output_dir, "@nonexistent") is None
+    assert get_seen_message_ids(tmp_output_dir, "@nonexistent") == set()
 
 
 def test_get_last_message_id_from_state(tmp_output_dir: Path) -> None:
     """State file present → returns stored id."""
-    _save_last_message_id(tmp_output_dir, "@channel", 42)
-    assert get_last_message_id(tmp_output_dir, "@channel") == 42
+    from tgparser.storage.writer import _persist_seen_ids
+
+    _persist_seen_ids(tmp_output_dir, "@channel", {41, 42, 43})
+    assert get_last_message_id(tmp_output_dir, "@channel") == 43
+    assert get_seen_message_ids(tmp_output_dir, "@channel") == {41, 42, 43}
 
 
 def test_get_last_message_id_from_sqlite(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
-    """SQLite metadata is queried when db_path is given."""
-    db_path = tmp_output_dir / "test.db"
+    """SQLite metadata is queried when db_path is given (and no messages table yet)."""
     from tgparser.storage.sqlite import update_last_message_id
 
+    db_path = tmp_output_dir / "test.db"
     update_last_message_id(db_path, "@test_channel", 7)
     last_id = get_last_message_id(tmp_output_dir, "@test_channel", db_path=db_path)
     assert last_id == 7
+    assert get_seen_message_ids(tmp_output_dir, "@test_channel", db_path=db_path) == {7}
 
 
 # ------------------------------------------------------------------
-# _save_last_message_id
+# Markdown export
 # ------------------------------------------------------------------
 
 
-def test_save_last_message_id(tmp_output_dir: Path) -> None:
-    """State file is written correctly."""
-    _save_last_message_id(tmp_output_dir, "@test", 99)
-    state_file = tmp_output_dir / "test_state.json"
-    assert state_file.exists()
-    data = json.loads(state_file.read_text(encoding="utf-8"))
-    assert data["last_message_id"] == 99
+def test_save_messages_markdown(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
+    """Markdown export produces a readable .md file."""
+    fp = save_messages(sample_messages, tmp_output_dir, "@md", fmt="md")
+    assert fp is not None
+    assert fp.suffix == ".md"
+    text = fp.read_text(encoding="utf-8")
+    assert text.startswith("# @test_channel")
+    assert "## Message #1" in text
+    assert "First message" in text
+    assert "https://example.com/img1.jpg" in text
+    assert "Forwarded" in text  # message #2 is forwarded
+
+
+def test_save_messages_markdown_alias(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
+    """'markdown' is accepted as an alias for 'md'."""
+    fp = save_messages(sample_messages, tmp_output_dir, "@alias", fmt="markdown")
+    assert fp is not None
+    assert fp.suffix == ".md"
+
+
+def test_write_markdown_empty(tmp_output_dir: Path) -> None:
+    """Empty list produces a stub Markdown file."""
+    fp = tmp_output_dir / "empty.md"
+    _write_markdown(fp, [])
+    assert "# (no messages)" in fp.read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------
+# Incremental with seen-id set
+# ------------------------------------------------------------------
+
+
+def test_incremental_uses_seen_set(
+    tmp_output_dir: Path, sample_messages: list[Message]
+) -> None:
+    """Re-importing the same messages doesn't duplicate them."""
+    save_messages_incremental(sample_messages, tmp_output_dir, "@dedup")
+    # Second call with the SAME messages should produce no new output.
+    result = save_messages_incremental(sample_messages, tmp_output_dir, "@dedup")
+    assert result is None
+    # And the seen set still equals the original ids.
+    assert get_seen_message_ids(tmp_output_dir, "@dedup") == {1, 2, 3}
+
+
+def test_incremental_skips_known_ids(
+    tmp_output_dir: Path, sample_messages: list[Message]
+) -> None:
+    """Only the new message is appended on the second run."""
+    save_messages_incremental(sample_messages[:2], tmp_output_dir, "@mix")
+    new_msg = Message(
+        id=99,
+        channel="@mix",
+        date=datetime(2025, 1, 20, 12, 0, 0, tzinfo=UTC),
+        text="Newly arrived",
+    )
+    fp = save_messages_incremental(
+        sample_messages[:2] + [new_msg], tmp_output_dir, "@mix"
+    )
+    assert fp is not None
+    # The combined file should contain all three ids.
+    assert {1, 2, 99} == get_seen_message_ids(tmp_output_dir, "@mix")
+    data = json.loads(fp.read_text(encoding="utf-8"))
+    ids = {d["id"] for d in data}
+    assert ids == {1, 2, 99}
+
+
+def test_incremental_md_format(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
+    """Incremental export also works in Markdown format."""
+    fp = save_messages_incremental(
+        sample_messages, tmp_output_dir, "@mdinc", fmt="md"
+    )
+    assert fp is not None
+    text = fp.read_text(encoding="utf-8")
+    assert "# @test_channel" in text
+    # Second call: nothing new, no new file.
+    fp2 = save_messages_incremental(
+        sample_messages, tmp_output_dir, "@mdinc", fmt="md"
+    )
+    assert fp2 is None

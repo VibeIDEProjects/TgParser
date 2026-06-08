@@ -19,6 +19,7 @@ from textual.widgets import (
     Button,
     DataTable,
     Input,
+    Label,
     Select,
     Static,
 )
@@ -192,43 +193,51 @@ class ResultScreen(Screen[None]):
         self._load_messages()
 
     def _load_messages(self) -> None:
-        """Load previously parsed messages from storage."""
-        # First try to get messages from the parse screen through app data
+        """Load previously parsed messages from storage.
+
+        Looks for the combined ``<channel>_all.json`` file produced by
+        :func:`save_messages_incremental`.  Falls back to scanning
+        ``<channel>/<timestamp>.json`` files in a sub-folder (legacy
+        per-export layout).
+        """
+        # First try the in-memory store (set by the parse screen).
         stored_messages = getattr(self.app, "_last_parsed_messages", None)
         if stored_messages:
             self._messages = stored_messages
-        else:
-            # Try loading from disk
-            output_dir = resolve_path("output_dir") / self._channel
-            if output_dir.exists():
-                json_files = list(output_dir.glob("*.json"))
-                if json_files:
-                    try:
-                        with open(
-                            max(json_files, key=lambda f: f.stat().st_mtime),
-                            encoding="utf-8",
-                        ) as f:
-                            data = json_lib.load(f)
-                        self._messages = [
-                            Message(
-                                id=m.get("id", 0),
-                                channel=m.get("channel", self._channel),
-                                date=(
-                                    datetime.fromisoformat(m["date"])
-                                    if isinstance(m.get("date"), str)
-                                    else datetime.now()
-                                ),
-                                text=m.get("text", ""),
-                                author=m.get("author"),
-                                media_urls=m.get("media_urls", []),
-                                reactions=m.get("reactions"),
-                                is_forwarded=m.get("is_forwarded", False),
-                                raw_source=m.get("raw_source", "unknown"),
-                            )
-                            for m in (data if isinstance(data, list) else [data])
-                        ]
-                    except (json_lib.JSONDecodeError, OSError, KeyError) as exc:
-                        logger.warning("Failed to load messages from disk: %s", exc)
+            self._populate_table()
+            return
+
+        out_root = resolve_path("output_dir")
+        safe = self._channel.lstrip("@").replace("/", "_")
+        json_file = out_root / f"{safe}_all.json"
+
+        if not json_file.exists():
+            # Legacy layout: per-export files in <channel>/ folder.
+            legacy_dir = out_root / self._channel
+            if legacy_dir.exists():
+                legacy_files = list(legacy_dir.glob("*.json"))
+                if legacy_files:
+                    json_file = max(
+                        legacy_files, key=lambda f: f.stat().st_mtime
+                    )
+
+        if not json_file.exists():
+            self._messages = []
+            self._populate_table()
+            self._status = (
+                f"ℹ️ No saved messages for @{self._channel} yet. "
+                "Run a parse first."
+            )
+            self._render_status()
+            return
+
+        try:
+            with open(json_file, encoding="utf-8") as f:
+                data = json_lib.load(f)
+            self._messages = [Message.from_dict(m) for m in data]
+        except (json_lib.JSONDecodeError, OSError, KeyError, ValueError) as exc:
+            logger.warning("Failed to load messages from %s: %s", json_file, exc)
+            self._messages = []
 
         self._populate_table()
 

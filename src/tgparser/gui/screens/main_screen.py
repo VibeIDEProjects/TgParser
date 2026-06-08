@@ -152,33 +152,61 @@ class MainScreen(Screen[None]):
         self._load_channels()
 
     def _load_channels(self) -> None:
-        """Load previously parsed channels from storage."""
+        """Load previously parsed channels from storage.
+
+        Looks for files named ``<channel>_all.<fmt>`` (the new combined
+        format produced by :func:`save_messages_incremental`).
+        """
         output_dir = resolve_path("output_dir")
         if not output_dir.exists():
             return
 
         table = self.query_one("#channel-table", ChannelTable)
-        for folder in output_dir.iterdir():
-            if folder.is_dir():
-                files = list(folder.glob("*.json")) + list(folder.glob("*.csv"))
-                if files:
-                    latest = max(files, key=lambda f: f.stat().st_mtime)
-                    if latest.suffix == ".json":
-                        try:
-                            with open(latest, encoding="utf-8") as f:
-                                data = json.load(f)
-                            msg_count = len(data) if isinstance(data, list) else 0
-                        except (json.JSONDecodeError, OSError):
-                            msg_count = 0
-                    else:
-                        msg_count = 0
+        # Group files by channel: strip the trailing _all.<ext>
+        by_channel: dict[str, list[Path]] = {}
+        for path in output_dir.iterdir():
+            if not path.is_file():
+                continue
+            name = path.name
+            for ext in ("json", "csv", "md"):
+                suffix = f"_all.{ext}"
+                if name.endswith(suffix):
+                    chan = name[: -len(suffix)]
+                    by_channel.setdefault(chan, []).append(path)
+                    break
 
-                    table.add_channel(
-                        name=folder.name,
-                        channel_type="unknown",
-                        last_parsed=latest.name,
-                        message_count=msg_count,
-                    )
+        for chan, files in by_channel.items():
+            # Prefer JSON for message counting
+            json_file = next(
+                (f for f in files if f.suffix == ".json"),
+                None,
+            )
+            if json_file is not None:
+                try:
+                    with open(json_file, encoding="utf-8") as f:
+                        data = json.load(f)
+                    msg_count = len(data) if isinstance(data, list) else 0
+                except (json.JSONDecodeError, OSError):
+                    msg_count = 0
+            else:
+                # Estimate from the markdown file (count "## Message" lines).
+                md_file = next((f for f in files if f.suffix == ".md"), None)
+                if md_file is not None:
+                    try:
+                        text = md_file.read_text(encoding="utf-8")
+                        msg_count = text.count("## Message #")
+                    except OSError:
+                        msg_count = 0
+                else:
+                    msg_count = 0
+
+            latest = max(files, key=lambda f: f.stat().st_mtime)
+            table.add_channel(
+                name=chan,
+                channel_type="unknown",
+                last_parsed=latest.name,
+                message_count=msg_count,
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

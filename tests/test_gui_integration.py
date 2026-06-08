@@ -3,6 +3,12 @@
 These tests verify that screens interact correctly and handle errors.
 """
 
+from __future__ import annotations
+
+import importlib
+import inspect
+import re
+
 import pytest
 from tgparser.gui.app import TgParserApp
 
@@ -86,3 +92,54 @@ async def test_parse_screen_stop_parsing_no_parse(app):
 
         # The screen should still be the parse screen
         assert app.screen.id == "parse-screen"
+
+
+# ------------------------------------------------------------------
+# Compose() smoke tests — catch NameError regressions like the
+# 'Label' import that broke ResultScreen in v0.2.30.
+# ------------------------------------------------------------------
+
+# Whitelist of classes that don't come from textual.widgets.
+_LOCAL_CLASSES = {
+    "ChannelTable",
+    "CopyableRichLog",
+    "InputWithLabel",
+    "TabPane",
+}
+
+
+@pytest.mark.parametrize(
+    "screen_module,screen_class",
+    [
+        ("tgparser.gui.screens.main_screen", "MainScreen"),
+        ("tgparser.gui.screens.auth_screen", "AuthScreen"),
+        ("tgparser.gui.screens.parse_screen", "ParseScreen"),
+        ("tgparser.gui.screens.result_screen", "ResultScreen"),
+    ],
+)
+def test_screen_compose_does_not_reference_unimported_widgets(
+    screen_module, screen_class
+) -> None:
+    """Every widget class used in `yield X(` must be importable.
+
+    This static check would have caught the v0.2.30 regression where
+    ``Label`` was used in ResultScreen.compose() but never imported.
+    """
+    module = importlib.import_module(screen_module)
+    screen_cls = getattr(module, screen_class)
+
+    try:
+        source = inspect.getsource(screen_cls.compose)
+    except (OSError, TypeError):
+        pytest.skip(f"{screen_class}.compose has no source")
+
+    referenced = set(m.group(1) for m in re.finditer(r"\byield\s+(\w+)\(", source))
+    referenced -= _LOCAL_CLASSES
+
+    from textual import widgets as tw
+
+    missing = sorted(c for c in referenced if not hasattr(tw, c))
+    assert not missing, (
+        f"{screen_module}.{screen_class}.compose() references "
+        f"unimported widget classes: {missing}"
+    )

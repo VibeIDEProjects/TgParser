@@ -31,3 +31,25 @@ class Message:
             "is_forwarded": self.is_forwarded,
             "raw_source": self.raw_source,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Message":
+        """Inverse of :meth:`to_dict`.
+
+        Accepts both ISO date strings (as written by :meth:`to_dict`) and
+        already-parsed ``datetime`` objects.
+        """
+        date = data["date"]
+        if isinstance(date, str):
+            date = datetime.fromisoformat(date)
+        return cls(
+            id=int(data["id"]),
+            channel=data.get("channel") or "",
+            date=date,
+            text=data.get("text") or "",
+            author=data.get("author"),
+            media_urls=list(data.get("media_urls") or []),
+            reactions=data.get("reactions"),
+            is_forwarded=bool(data.get("is_forwarded", False)),
+            raw_source=data.get("raw_source") or "unknown",
+        )

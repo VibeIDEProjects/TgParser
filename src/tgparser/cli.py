@@ -25,7 +25,7 @@ from tgparser.utils import setup_logging
 logger = logging.getLogger("tgparser")
 
 # Shared output-format choices
-_FMT_CHOICES = ["json", "csv", "txt", "sqlite"]
+_FMT_CHOICES = ["json", "csv", "txt", "md", "markdown", "sqlite"]
 
 
 @click.group()
@@ -399,6 +399,142 @@ def export(
         click.echo(f"✅ Exported {len(messages)} messages → {result}")
     else:
         click.echo(f"✅ Exported {len(messages)} messages → sqlite:{db_path or 'default.db'}")
+
+
+# ------------------------------------------------------------------
+# tgparser list — browse previously parsed messages
+# ------------------------------------------------------------------
+
+
+@main.command(
+    name="list",
+    help="List channels and messages already stored in the output directory.",
+)
+@click.option(
+    "--channel",
+    "channel_filter",
+    default=None,
+    help="Filter by channel name (substring match).",
+)
+@click.option(
+    "--limit",
+    "limit",
+    type=int,
+    default=20,
+    show_default=True,
+    help="How many messages to display (most recent first).",
+)
+@click.option(
+    "--format",
+    "display_fmt",
+    type=click.Choice(["table", "json", "md"]),
+    default="table",
+    show_default=True,
+    help="Output format.  'table' prints a human-readable summary.",
+)
+@click.option(
+    "--output-dir",
+    "output_dir",
+    type=click.Path(file_okay=False, writable=True),
+    default=None,
+    help="Override the output directory (default: ~/.tgparser/output).",
+)
+def list_cmd(channel_filter, limit, display_fmt, output_dir):
+    """Browse what has been parsed and stored so far."""
+    from tgparser.storage.writer import (
+        _combined_file,
+        get_seen_message_ids,
+    )
+
+    out = (
+        Path(output_dir).expanduser()
+        if output_dir
+        else resolve_path("output_dir")
+    )
+    if not out.exists():
+        click.echo(f"Output directory does not exist: {out}")
+        click.echo("Run `tgparser parse …` first.")
+        raise SystemExit(1)
+
+    # Discover channels: look for <channel>_all.json / _all.md / _state.json
+    channels: dict[str, dict] = {}
+    for path in out.iterdir():
+        if not path.is_file():
+            continue
+        name = path.name
+        if name.endswith("_all.json"):
+            chan = name[: -len("_all.json")]
+            channels.setdefault(chan, {})["json"] = path
+        elif name.endswith("_all.md"):
+            chan = name[: -len("_all.md")]
+            channels.setdefault(chan, {})["md"] = path
+        elif name.endswith("_all.csv"):
+            chan = name[: -len("_all.csv")]
+            channels.setdefault(chan, {})["csv"] = path
+        elif name.endswith("_state.json"):
+            chan = name[: -len("_state.json")]
+            channels.setdefault(chan, {})["state"] = path
+
+    if channel_filter:
+        channels = {c: v for c, v in channels.items() if channel_filter in c}
+
+    if not channels:
+        click.echo("No parsed channels found.")
+        return
+
+    if display_fmt == "table":
+        click.echo(
+            f"{'Channel':<32}  {'Stored':>8}  {'Last ID':>12}  Files"
+        )
+        click.echo("-" * 80)
+        for chan, files in sorted(channels.items()):
+            seen = get_seen_message_ids(out, f"@{chan}")
+            last_id = max(seen) if seen else 0
+            file_list = ", ".join(sorted(k for k in files if k != "state"))
+            click.echo(
+                f"@{chan:<31}  {len(seen):>8}  {last_id:>12}  {file_list}"
+            )
+        click.echo(
+            f"\nUse `--channel <name> --format json|md` to see the actual messages."
+        )
+        return
+
+    # JSON / md: print messages from a specific channel
+    target = None
+    if channel_filter:
+        # Pick the channel that best matches
+        matches = [c for c in channels if channel_filter in c]
+        if matches:
+            target = matches[0]
+    elif len(channels) == 1:
+        target = next(iter(channels))
+    else:
+        click.echo("Multiple channels found — please pass --channel <name>.")
+        for c in sorted(channels):
+            click.echo(f"  @{c}")
+        raise SystemExit(2)
+
+    files = channels[target]
+    src = files.get(display_fmt) or files.get("md") or files.get("json")
+    if src is None:
+        click.echo(f"No {display_fmt} file for @{target}.")
+        raise SystemExit(1)
+
+    if display_fmt == "json":
+        import json as _json
+
+        data = _json.loads(src.read_text(encoding="utf-8"))
+        for m in data[:limit]:
+            click.echo(
+                f"[#{m['id']:>12}  {m['date'][:19]}  {m.get('author') or '—':<16}] "
+                f"{(m.get('text') or '').splitlines()[0] if m.get('text') else ''}"
+            )
+    else:
+        # md: just print the file (already nicely formatted)
+        text = src.read_text(encoding="utf-8")
+        # Trim to first N message sections
+        sections = text.split("\n---\n")
+        click.echo("\n---\n".join(sections[: limit + 1]))
 
 
 # ------------------------------------------------------------------
