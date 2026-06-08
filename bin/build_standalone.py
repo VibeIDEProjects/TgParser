@@ -47,21 +47,26 @@ def main():
         "-m",
         "PyInstaller",
         "--name=TgParser",
-        "--icon=",  # No icon yet
         f"--distpath={dist_dir}",
         "--noconfirm",
         "--clean",
     ]
+
+    # Optional icon: pass only if it exists and is a valid .ico / .exe
+    icon_path = "assets/icon.ico"
+    if os.path.isfile(icon_path):
+        cmd.append(f"--icon={icon_path}")
 
     if args.onedir:
         cmd.append("--onedir")
     else:
         cmd.append("--onefile")
 
-    # Common hidden imports for Telethon and dependencies
+    # Common hidden imports for Telethon, Playwright, Textual and our own modules.
     hidden_imports = [
         "tgparser",
         "tgparser.cli",
+        "tgparser.config",
         "tgparser.gui",
         "tgparser.gui.app",
         "tgparser.gui.screens",
@@ -69,18 +74,17 @@ def main():
         "tgparser.gui.screens.auth_screen",
         "tgparser.gui.screens.parse_screen",
         "tgparser.gui.screens.result_screen",
-        "tgparser.web",
-        "tgparser.web.web_parser",
-        "tgparser.web.web_auth",
-        "tgparser.mtproto",
-        "tgparser.mtproto.mtproto_auth",
-        "tgparser.mtproto.mtproto_parser",
+        "tgparser.auth",
+        "tgparser.auth.web_auth",
+        "tgparser.auth.mtproto_auth",
+        "tgparser.parsers",
+        "tgparser.parsers.web_parser",
+        "tgparser.parsers.mtproto_parser",
         "tgparser.storage",
         "tgparser.storage.database",
         "tgparser.storage.exporter",
         "tgparser.utils",
         "tgparser.utils.logger",
-        "tgparser.utils.config",
         # Telethon dependencies
         "cryptg",
         "PIL",
