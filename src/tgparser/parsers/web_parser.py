@@ -272,6 +272,7 @@ class WebParser:
         )
 
         logger.info("Navigating to channel: %s", channel_url)
+        print(f"\n  Navigating to channel: {channel_url}", flush=True)
         hash_part = self._extract_hash(channel_url)
         page.evaluate(f"window.location.hash = '{hash_part}'")
 
@@ -279,6 +280,7 @@ class WebParser:
         time.sleep(1.0)
 
         channel_name = self._extract_channel_name(page)
+        print(f"  Channel identified as: {channel_name} (current URL: {page.url})", flush=True)
         logger.info("Channel identified as: %s", channel_name)
         return channel_name
 
@@ -365,6 +367,12 @@ class WebParser:
                     len(all_messages),
                     limit,
                 )
+                if attempt % 5 == 0 or len(new_messages) > 0:
+                    print(
+                        f"  Progress: {len(all_messages)}/{limit} messages "
+                        f"(scroll {attempt + 1}/{max_scroll_attempts})",
+                        flush=True,
+                    )
             else:
                 streak_no_new += 1
                 logger.debug(
@@ -373,6 +381,11 @@ class WebParser:
                     max_scroll_attempts,
                     streak_no_new,
                 )
+                if streak_no_new >= 3:
+                    print(
+                        f"  Reached top of channel (no new messages for {streak_no_new} scrolls)",
+                        flush=True,
+                    )
 
             if len(all_messages) >= limit:
                 logger.info("Reached message limit (%d).", limit)
@@ -422,12 +435,15 @@ class WebParser:
         elements: list[Tag] = []
         for sel in _MESSAGE_ITEM_SELECTORS:
             found = soup.select(sel)
+            # Debug output – will appear in the terminal that launched tgparser gui
+            print(f"  SELECTOR {sel} -> {len(found)} elements")
             logger.debug("[web_parser] selector=%s -> %d elements", sel, len(found))
             if found:
                 elements = found
                 break
 
         if not elements:
+            print(f"  -> No message elements found (html len={len(html)}, url={page.url})")
             logger.info(
                 "[web_parser] No message elements found in DOM (html length=%d). "
                 "Page URL: %s", len(html), page.url,
