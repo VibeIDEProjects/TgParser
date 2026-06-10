@@ -14,7 +14,10 @@
 - **Парсинг открытых каналов** — прямое чтение через MTProto API (Telethon)
 - **Парсинг закрытых каналов** — чтение через web-версию Telegram (Playwright + BeautifulSoup)
 - **Обход защиты от копирования** — автоматическое снятие CSS `user-select: none`, блокировки контекстного меню
-- **Вывод данных** в JSON, CSV, plain-text или SQLite
+- **Вывод данных** в JSON, CSV, plain-text, **Markdown** или SQLite
+- **Markdown-экспорт** с hard-breaks: многострочные сообщения
+  корректно рендерятся в GitHub, Obsidian, VS Code и других
+  Markdown-вьюерах
 - **Инкрементальный парсинг** — сохранение только новых сообщений
 - **CLI-интерфейс** на базе Click
 
@@ -187,12 +190,37 @@ tgparser export --input data/output/messages.json --format json --output data/ou
 # Сохранение в CSV
 tgparser export --input data/output/messages.json --format csv --output data/output/export.csv
 
+# Сохранение в Markdown (для просмотра / публикации)
+tgparser export --input data/output/messages.json --format markdown --output data/output/export.md
+
 # Сохранение в SQLite
 tgparser export --input data/output/messages.json --format sqlite --output data/output/export.db
 
 # Инкрементальный экспорт (только новые сообщения)
 tgparser export --input data/output/messages.json --incremental
 ```
+
+Доступные форматы (полный список в `src/tgparser/cli.py:28`):
+`json`, `csv`, `txt`, `markdown`, `sqlite`.
+
+### Markdown-экспорт
+
+`--format markdown` сохраняет сообщения в виде читабельного
+документа с заголовком канала, метаданными и hard-break'ами
+(два пробела в конце строки), чтобы многострочные сообщения
+рендерились корректно в любом Markdown-вьюере:
+
+```bash
+# Сразу в Markdown при парсинге
+tgparser parse open @channel --format markdown --output data/output/channel.md
+
+# Конвертировать ранее сохранённый JSON в Markdown
+tgparser export --input data/output/channel.json --format markdown --output data/output/channel.md
+```
+
+Имя файла: `<channel>_all.md` (объединённый) или
+`<channel>_<YYYYMMDD_HHMMSS>.md` (по дампу). Подробности — в
+`src/tgparser/storage/writer.py:258` (`_write_markdown`).
 
 ### GUI (графический интерфейс)
 
@@ -241,6 +269,17 @@ tgparser parse closed https://t.me/private_channel --since 2025-01-01
 tgparser parse open @tech_news --format csv --output data/output/tech_news.csv
 tgparser export --input data/output/tech_news.csv --incremental
 ```
+
+### Экспорт в Markdown для просмотра
+
+```bash
+tgparser parse open @tech_news --format markdown --output data/output/tech_news.md
+```
+
+Откройте `data/output/tech_news.md` в VS Code / Obsidian / GitHub —
+сообщения будут отформатированы как читабельный документ с
+заголовками, датами и hard-break'ами. В GUI можно посмотреть
+этот файл через **Browse Output** (см. ниже).
 
 ---
 
