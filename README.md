@@ -26,7 +26,7 @@
 
 ```bash
 # Клонировать репозиторий
-git clone https://github.com/borodatych/tgparser.git
+git clone https://github.com/VibeIDEProjects/TgParser.git
 cd tgparser
 
 # Создать виртуальное окружение
@@ -45,7 +45,7 @@ playwright install chromium
 
 ```bash
 # Установка
-pip install tgparser-cli
+pip install tgparser-cli  # dist-имя: tgparser_cli
 
 # Обновление
 pip install --upgrade tgparser-cli
@@ -199,17 +199,22 @@ tgparser export --input data/output/messages.json --incremental
 TgParser поставляется с текстовым графическим интерфейсом, построенным на [Textual](https://textual.textualize.io/).
 
 ```bash
-# Запуск GUI
-tgparser gui
+# Кросс-платформенные лаунчеры (рекомендуемый способ)
+./bin/run_gui.sh        # Linux / macOS
+.\bin\run_gui.bat     # Windows
+python bin/run_gui.py   # универсальный
 
-# Или напрямую через модуль
+# Или, если установлено через pip:
+tgparser gui
 python -m tgparser.gui
 ```
 
 GUI предоставляет удобный интерфейс для:
 - Авторизации (web и MTProto)
 - Парсинга каналов с настройками
-- Просмотра результатов
+- Просмотра и экспорта результатов
+- **Просмотра файлов в `output_dir`** через встроенный проводник
+  (дерево слева, превью справа) — кнопка **Browse Output**
 - Управления сохранёнными каналами
 
 > **Примечание:** GUI — рекомендуемый способ взаимодействия для большинства пользователей.
@@ -242,25 +247,37 @@ tgparser export --input data/output/tech_news.csv --incremental
 ## Структура проекта
 
 ```
-tgparser/
-├── src/
-│   └── tgparser/
-│       ├── auth/          # Модули авторизации (web, mtproto)
-│       ├── parsers/       # Парсеры (mtproto_parser, web_parser)
-│       ├── storage/       # Вывод и хранение (JSON, CSV, TXT, SQLite)
-│       ├── models/        # Модели данных (Message)
-│       ├── cli.py         # CLI-интерфейс (Click)
-│       ├── config.py      # Загрузка конфигурации
-│       └── utils.py       # Вспомогательные функции
-├── tests/                 # Тесты (pytest)
+TgParser/
+├── src/tgparser/            # Исходный код
+│   ├── auth/                # Авторизация (web, mtproto)
+│   ├── parsers/             # Парсеры (mtproto_parser, web_parser)
+│   ├── storage/             # Сохранение (JSON, CSV, TXT, Markdown, SQLite)
+│   ├── models/              # Модели данных (Message)
+│   ├── gui/                 # TUI на базе Textual
+│   │   ├── screens/         # MainScreen, AuthScreen, ParseScreen,
+│   │   │                    #   ResultScreen, FilesScreen, PreviewScreen
+│   │   ├── app.py           # TgParserApp
+│   │   └── _win32_hash_patch.py
+│   ├── cli.py               # CLI (Click)
+│   ├── config.py            # Загрузка конфигурации
+│   └── utils.py             # Вспомогательные функции
+├── tests/                   # pytest (193+ теста)
+├── bin/                     # Утилиты сборки / запуска
+│   ├── run_gui.{bat,py,sh}  # Лаунчеры GUI
+│   ├── build_standalone.py  # PyInstaller-сборка
+│   └── publish_to_pypi.py   # Локальная публикация в PyPI/TestPyPI
+├── scripts/                 # Диагностические скрипты (см. scripts/README.md)
 ├── data/
-│   ├── output/            # Результаты парсинга
-│   └── sessions/          # Сохранённые сессии
-├── docs/                  # Документация
-├── config.yaml            # Конфигурация (опционально)
-├── .env                   # Секреты (не в git)
-├── pyproject.toml         # Настройки проекта
-└── README.md              # Этот файл
+│   ├── output/              # Результаты парсинга (JSON/CSV/MD)
+│   └── sessions/            # Сохранённые сессии
+├── logs/                    # Runtime-логи (только .gitkeep в репо)
+├── docs/                    # Документация (roadmap, specs)
+├── .github/workflows/       # CI: ci.yml, publish.yml
+├── config.yaml              # Конфигурация (опционально)
+├── .env.example             # Шаблон секретов (не заполняйте!)
+├── .env                     # Реальные секреты (в .gitignore!)
+├── pyproject.toml           # Настройки проекта
+└── README.md                # Этот файл
 ```
 
 ## Совместимость
@@ -325,6 +342,117 @@ python bin/build_standalone.py --onedir
 - [x] Тесты (smoke + интеграционные) и сборка (PyInstaller)
 
 Полный roadmap: [docs/roadmap.md](docs/roadmap.md)
+
+---
+
+## Утилиты в `bin/`
+
+В `bin/` лежат **кросс-платформенные** скрипты, которые не
+входят в сам пакет, но нужны при разработке и сборке.
+
+| Скрипт | Назначение |
+|---|---|
+| `bin/run_gui.bat` | Windows-лаунчер GUI |
+| `bin/run_gui.sh` | Linux/macOS-лаунчер GUI |
+| `bin/run_gui.py` | Универсальный Python-лаунчер GUI |
+| `bin/build_standalone.py` | Сборка standalone `.exe` через PyInstaller |
+| `bin/publish_to_pypi.py` | Сборка + публикация в PyPI / TestPyPI |
+
+### `bin/publish_to_pypi.py` — публикация пакета
+
+Скрипт оборачивает `python -m build` + `twine upload` в одну
+команду и поддерживает dry-run.
+
+```bash
+# Что попадёт в пакет (сборка, без upload)
+python bin/publish_to_pypi.py
+
+# Сначала прогон на TestPyPI
+python bin/publish_to_pypi.py --test --upload
+
+# Реальная публикация в PyPI
+python bin/publish_to_pypi.py --upload
+```
+
+**Требования:**
+
+1. `pip install build twine`
+2. PyPI-токен — одним из способов:
+   - `~/.pypirc`:
+     ```ini
+     [pypi]
+     username = __token__
+     password = pypi-XXXXXXXXXXXXXXXXXXXX
+     ```
+   - ENV-переменные `TWINE_USERNAME` / `TWINE_PASSWORD`
+   - `keyring`
+
+> ⚠️ **Не светите PyPI-токен в публичных ответах/репо.** Добавьте
+> `~/.pypirc` в `.gitignore` (уже там) и используйте переменные
+> окружения в CI.
+
+### Релиз через GitHub Actions (рекомендуется)
+
+В репозитории уже настроен workflow
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml),
+который автоматически публикует пакет в PyPI при создании
+**GitHub Release**:
+
+1. `git tag v0.3.0 && git push origin v0.3.0` — отправляем тег.
+2. На GitHub: **Releases → Draft a new release → выбрать тег**.
+3. Workflow `Publish to PyPI` подхватывает релиз и публикует.
+
+`PYPI_TOKEN` хранится в **Settings → Secrets → Actions**.
+
+---
+
+## Папка `scripts/`
+
+Содержит **одноразовые отладочные** скрипты (`.py`), которые
+запускаются вручную во время разработки. **Не** являются
+runtime-кодом приложения и **не** автотестами.
+
+Подробности и правило «логи → `../logs/`» — в
+[`scripts/README.md`](scripts/README.md).
+
+---
+
+## Управление логами
+
+`logs/` — runtime-логи приложения (например,
+`closed_parse.log` — лог парсинга закрытого канала).
+
+* **В репозитории** хранится только `logs/.gitkeep` (маркер
+  папки).
+* **Все** `.log`/`.txt` файлы внутри `logs/` автоматически
+  игнорируются через `.gitignore` (`logs/*` + `!logs/.gitkeep`).
+* Вывод диагностических скриптов из `scripts/` тоже
+  перенаправляйте в `../logs/`.
+
+Аналогично `data/output/` хранит только `.gitkeep`, а реальные
+результаты парсинга (`.json`/`.csv`/`.md`) остаются локально.
+
+---
+
+## Секреты и `.env`
+
+`.env` **никогда** не коммитится (в `.gitignore:1`). Шаблон —
+[`.env.example`](.env.example):
+
+```dotenv
+# TgParser secrets — copy to .env and fill in
+# Do NOT commit .env!
+
+# MTProto API credentials from https://my.telegram.org/apps
+TG_API_ID=
+TG_API_HASH=
+TG_PHONE=
+```
+
+> 🔒 **API Hash и номер телефона — это секреты.** Никогда не
+> публикуйте их в issues, PR-описаниях, логах или скриншотах.
+> Если они утекли — отзовите их в **my.telegram.org/apps** и
+> пересоздайте.
 
 ---
 
