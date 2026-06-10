@@ -7,14 +7,22 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
-
 from tgparser.models.message import Message
 
 logger = logging.getLogger("tgparser")
 
-OutputFormat = Literal["json", "csv", "txt", "md", "markdown", "sqlite"]
-SUPPORTED_FILE_FORMATS: tuple[str, ...] = ("json", "csv", "txt", "md", "markdown")
+# ``OutputFormat`` used to be a ``typing.Literal[...]`` alias.  In
+# Python 3.14 ``Literal.__call__`` raises
+# ``TypeError: Cannot instantiate typing.Literal`` which broke the
+# GUI export path (``_get_format`` did ``OutputFormat(fmt)``).  We
+# therefore use a plain ``str`` alias and validate values against the
+# explicit :data:`SUPPORTED_OUTPUT_FORMATS` list at the boundaries
+# (e.g. :func:`tgparser.gui.screens.result_screen.ResultScreen._get_format`).
+OutputFormat = str
+SUPPORTED_OUTPUT_FORMATS: tuple[str, ...] = (
+    "json", "csv", "txt", "markdown", "sqlite",
+)
+SUPPORTED_FILE_FORMATS: tuple[str, ...] = ("json", "csv", "txt", "markdown")
 
 
 def save_messages(
@@ -36,7 +44,7 @@ def save_messages(
         messages: List of parsed messages.
         output_dir: Directory to write the output file.
         channel_name: Channel slug used in the file name.
-        fmt: ``"json"``, ``"csv"``, ``"txt"``, ``"md"``/``"markdown"`` or ``"sqlite"``.
+        fmt: ``"json"``, ``"csv"``, ``"txt"``, ``"markdown"`` or ``"sqlite"``.
         db_path: Path to the SQLite database file (required for ``sqlite``).
     """
     output_dir = Path(output_dir)
@@ -51,7 +59,7 @@ def save_messages(
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_channel = channel_name.lstrip("@").replace("/", "_")
-    ext = "md" if fmt in ("md", "markdown") else fmt
+    ext = "md" if fmt == "markdown" else fmt
     filename = f"{safe_channel}_{ts}.{ext}"
     filepath = output_dir / filename
 
@@ -61,7 +69,7 @@ def save_messages(
         _write_csv(filepath, messages)
     elif fmt == "txt":
         _write_txt(filepath, messages)
-    elif fmt in ("md", "markdown"):
+    elif fmt == "markdown":
         _write_markdown(filepath, messages)
     else:
         raise ValueError(f"Unsupported format: {fmt}")
@@ -79,7 +87,7 @@ def save_messages_incremental(
 ) -> Path | None:
     """Incremental variant -- only appends messages whose ID we have never seen.
 
-    For file-based formats (json/csv/txt/md) a single file ``<channel>_all.<fmt>``
+    For file-based formats (json/csv/txt/markdown) a single file ``<channel>_all.<fmt>``
     is maintained.  New messages are merged with previously stored ones and the
     combined set is re-written.  For sqlite the new messages are inserted
     directly with INSERT OR IGNORE on the primary key.
@@ -295,9 +303,17 @@ def _write_markdown(filepath: Path, messages: list[Message]) -> None:
         if m.is_forwarded:
             out.append("> ↪️ Forwarded")
             out.append("")
-        # Body — keep original line breaks
+        # Body — keep original line breaks.  In CommonMark, a
+        # single ``\n`` is a soft break and most renderers (e.g.
+        # Textual's Markdown widget used in PreviewScreen) join
+        # the lines into a single paragraph.  Appending two
+        # trailing spaces before each newline turns every line
+        # break into a hard ``<br>`` so the preview matches the
+        # original message layout.
         body = (m.text or "").rstrip()
         if body:
+            import re as _re
+            body = _re.sub(r"(?<!\n)\n(?!\n)", "  \n", body)
             out.append(body)
             out.append("")
         if m.media_urls:
@@ -340,7 +356,7 @@ def _state_file(output_dir: str | Path, channel_name: str) -> Path:
 
 def _combined_file(output_dir: str | Path, channel_name: str, fmt: str) -> Path:
     safe = channel_name.lstrip("@").replace("/", "_")
-    ext = "md" if fmt in ("md", "markdown") else fmt
+    ext = "md" if fmt == "markdown" else fmt
     return Path(output_dir) / f"{safe}_all.{ext}"
 
 
@@ -426,7 +442,7 @@ def _write_combined(
         _write_json(path, messages)
     elif fmt == "csv":
         _write_csv(path, messages)
-    elif fmt in ("md", "markdown"):
+    elif fmt == "markdown":
         _write_markdown(path, messages)
     elif fmt == "txt":
         _write_txt(path, messages)

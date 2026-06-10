@@ -211,6 +211,44 @@ class TestExtractHash:
         assert WebParser._extract_hash("mychannel") == "mychannel"
 
 
+
+class TestEnsureHashFragment:
+    def test_inserts_hash_for_a_frontend(self) -> None:
+        url = "https://web.telegram.org/a/-1003929682471"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == "https://web.telegram.org/a/#-1003929682471"
+
+    def test_inserts_hash_for_k_frontend(self) -> None:
+        url = "https://web.telegram.org/k/-1003929682471"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == "https://web.telegram.org/k/#-1003929682471"
+
+    def test_inserts_hash_for_beta_frontend(self) -> None:
+        url = "https://web.telegram.org/beta/-1003929682471"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == "https://web.telegram.org/beta/#-1003929682471"
+
+    def test_idempotent_when_hash_present(self) -> None:
+        url = "https://web.telegram.org/a/#-1003929682471"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == url
+
+    def test_preserves_username_in_hash(self) -> None:
+        url = "https://web.telegram.org/a/#@somechannel"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == url
+
+    def test_unchanged_for_unrelated_url(self) -> None:
+        url = "https://t.me/durov"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == url
+
+    def test_unchanged_when_tail_is_empty(self) -> None:
+        # No channel id/path at all -> do not insert an empty '#'
+        url = "https://web.telegram.org/a/"
+        out = WebParser._ensure_hash_fragment(url)
+        assert out == url
+
 class TestParseMessageElement:
     def test_parses_simple_message(self, mock_web_auth: WebAuth) -> None:
         parser = WebParser(mock_web_auth)

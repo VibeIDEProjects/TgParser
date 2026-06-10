@@ -12,7 +12,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.markup import escape
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import (
@@ -27,7 +27,15 @@ from tgparser.gui.widgets.copyable_rich_log import CopyableRichLog
 
 from tgparser.config import resolve_path
 from tgparser.models import Message
-from tgparser.storage import save_messages, save_messages_incremental, OutputFormat
+from tgparser.storage import (
+    save_messages,
+    save_messages_incremental,
+    SUPPORTED_OUTPUT_FORMATS,
+    OutputFormat,
+)
+from tgparser.utils import sanitize_dir_name
+
+from tgparser.gui.screens.preview_screen import PreviewScreen
 
 logger = logging.getLogger("tgparser")
 
@@ -68,7 +76,7 @@ class ResultScreen(Screen[None]):
 	    }
 
     #messages-table {
-        height: 1fr;
+        height: auto;
         min-height: 10;
         border: solid $accent;
         margin-bottom: 1;
@@ -134,10 +142,13 @@ class ResultScreen(Screen[None]):
         super().__init__(**kwargs)
         self._channel = channel
         self._messages: list[Message] = []
+        # Path of the most recent successful export.  Used by the
+        # Preview button to open the file the user just produced.
+        self._last_export_path: Path | None = None
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
-        with Container(id="result-container"):
+        with VerticalScroll(id="result-container"):
             with Horizontal(id="result-header"):
                 yield Button("\u2190 Back", id="btn-back-header", variant="default")
                 yield Static("📋 [bold]Results & Export[/]", id="result-title")
@@ -151,7 +162,7 @@ class ResultScreen(Screen[None]):
                 with Horizontal(classes="input-row"):
                     yield Label("Format:")
                     yield Select(
-                        [(f.value, f.name) for f in OutputFormat],
+                        [(f, f) for f in SUPPORTED_OUTPUT_FORMATS],
                         prompt="Select format",
                         id="format-select",
                         value="json",
@@ -166,7 +177,7 @@ class ResultScreen(Screen[None]):
                 with Horizontal(classes="input-row"):
                     yield Label("Incremental:")
                     yield Select(
-                        [("false", "No (full export)"), ("true", "Yes (only new messages)")],
+                        [("No (full export)", "false"), ("Yes (only new messages)", "true")],
                         prompt="Select mode",
                         id="incremental-select",
                         value="false",
@@ -176,6 +187,7 @@ class ResultScreen(Screen[None]):
             # Export actions
             with Horizontal(id="export-actions"):
                 yield Button("💾 Export", id="btn-export", variant="primary")
+                yield Button("📖 Preview", id="btn-preview", variant="default")
                 yield Button("🔄 Refresh Table", id="btn-refresh", variant="default")
                 yield Button("✕ Back", id="btn-back", variant="default")
 
@@ -195,10 +207,17 @@ class ResultScreen(Screen[None]):
     def _load_messages(self) -> None:
         """Load previously parsed messages from storage.
 
-        Looks for the combined ``<channel>_all.json`` file produced by
-        :func:`save_messages_incremental`.  Falls back to scanning
-        ``<channel>/<timestamp>.json`` files in a sub-folder (legacy
-        per-export layout).
+        Looks for, in order:
+
+        1. The in-memory store populated by the parse screen
+           (``app._last_parsed_messages``).
+        2. The combined ``<channel>_all.json`` file produced by
+           :func:`save_messages_incremental`.
+        3. The most recent per-export file matching
+           ``<channel>_<YYYYMMDD_HHMMSS>.json`` (timestamp naming
+           used by :func:`save_messages`).
+        4. The legacy ``<channel>/<timestamp>.json`` sub-folder
+           layout.
         """
         # First try the in-memory store (set by the parse screen).
         stored_messages = getattr(self.app, "_last_parsed_messages", None)
@@ -207,12 +226,28 @@ class ResultScreen(Screen[None]):
             self._populate_table()
             return
 
+        import re as _re
         out_root = resolve_path("output_dir")
         safe = self._channel.lstrip("@").replace("/", "_")
+        ts_re = _re.compile(r"^.+_(\d{8}_\d{6})$")
+
+        # 1) combined <safe>_all.json
         json_file = out_root / f"{safe}_all.json"
 
+        # 2) timestamped <safe>_<ts>.json — most recent wins.
+        if not json_file.exists() and out_root.exists():
+            ts_candidates = [
+                p for p in out_root.iterdir()
+                if p.is_file()
+                and p.suffix == ".json"
+                and p.stem.startswith(f"{safe}_")
+                and ts_re.match(p.stem)
+            ]
+            if ts_candidates:
+                json_file = max(ts_candidates, key=lambda p: p.stat().st_mtime)
+
+        # 3) legacy <output_dir>/<channel>/*.json layout.
         if not json_file.exists():
-            # Legacy layout: per-export files in <channel>/ folder.
             legacy_dir = out_root / self._channel
             if legacy_dir.exists():
                 legacy_files = list(legacy_dir.glob("*.json"))
@@ -224,11 +259,10 @@ class ResultScreen(Screen[None]):
         if not json_file.exists():
             self._messages = []
             self._populate_table()
-            self._status = (
+            self.query_one("#status-message", Static).update(
                 f"ℹ️ No saved messages for @{self._channel} yet. "
                 "Run a parse first."
             )
-            self._render_status()
             return
 
         try:
@@ -279,14 +313,27 @@ class ResultScreen(Screen[None]):
             p = Path(path_input).expanduser()
             p.parent.mkdir(parents=True, exist_ok=True)
             return p
-        out = resolve_path("output_dir") / self._channel
+        # ``_channel`` may be a full URL (``https://web.telegram.org/a/#-100xxx``),
+        # which contains characters that are forbidden in Windows paths.
+        # Sanitize it before joining with the output dir.
+        safe_name = sanitize_dir_name(self._channel)
+        out = resolve_path("output_dir") / safe_name
         out.mkdir(parents=True, exist_ok=True)
         return out
 
     def _get_format(self) -> OutputFormat:
         """Get the selected output format."""
         fmt = self.query_one("#format-select", Select).value
-        return OutputFormat(fmt)
+        # ``OutputFormat`` is a ``str`` alias; coerce defensively so a
+        # blank / unknown Select value falls back to the default
+        # instead of crashing the export worker.
+        if fmt not in SUPPORTED_OUTPUT_FORMATS:
+            logger.warning(
+                "Unknown output format %r, falling back to 'json'",
+                fmt,
+            )
+            return "json"
+        return str(fmt)
 
     def _get_incremental(self) -> bool:
         """Check if incremental mode is selected."""
@@ -327,11 +374,13 @@ class ResultScreen(Screen[None]):
 
             log.write(f"✅ Exported {saved_count} messages to {output_path}")
             log.write(
-                f"   Format: {fmt.value.upper()}, Incremental: {incremental}"
+                f"   Format: {fmt.upper()}, Incremental: {incremental}"
             )
             self.query_one("#status-message", Static).update(
                 f"✅ Exported {saved_count} messages to {output_path}"
             )
+            # Remember the just-written file for the Preview button.
+            self._last_export_path = output_path if output_path.is_file() else None
 
         except Exception as exc:
             logger.exception("Export failed")
@@ -362,6 +411,30 @@ class ResultScreen(Screen[None]):
         self.query_one("#format-select", Select).value = "sqlite"
         self.action_export()
 
+    def action_preview(self) -> None:
+        """Open the Preview screen for the most recently exported file.
+
+        Falls back to the latest file in the channel output directory when
+        the user has not exported during this session yet.
+        """
+        path = self._last_export_path
+        if path is None or not path.exists():
+            out_dir = self._get_output_path()
+            candidates = sorted(
+                out_dir.glob("*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            files = [p for p in candidates if p.is_file()]
+            if not files:
+                self.query_one("#status-message", Static).update(
+                    "⚠️ Nothing to preview yet. Run an export first."
+                )
+                return
+            path = files[0]
+        fmt = self._get_format()
+        self.app.push_screen(PreviewScreen(file_path=path, fmt=fmt))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         btn_id = event.button.id
@@ -369,6 +442,8 @@ class ResultScreen(Screen[None]):
             self.action_export()
         elif btn_id == "btn-refresh":
             self._load_messages()
+        elif btn_id == "btn-preview":
+            self.action_preview()
         elif btn_id == "btn-back" or btn_id == "btn-back-header":
             self.action_go_back()
 

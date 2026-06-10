@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import (
@@ -114,7 +114,7 @@ class AuthScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
-        with Container(id="auth-container"):
+        with VerticalScroll(id="auth-container"):
             yield Static("\U0001f510 [bold]Authorization[/]", id="auth-title")
 
             with TabbedContent(initial="mtproto"):

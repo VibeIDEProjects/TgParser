@@ -86,11 +86,27 @@ class TgParserApp(App[None]):
         from tgparser.gui.screens.result_screen import ResultScreen
         self.push_screen(ResultScreen(id="result-screen", channel=channel))
 
+    def open_files_screen(self) -> None:
+        """Navigate to the file-browser / preview screen."""
+        from tgparser.gui.screens.files_screen import FilesScreen
+        self.push_screen(FilesScreen())
+
 
 def run_gui() -> None:
     """Entry point for the GUI."""
+    # Apply the win32 # / paste fix BEFORE importing the App, so that
+    # the patched EventMonitor.run is the one used by the driver.
+    from tgparser.gui._win32_hash_patch import (
+        apply_patch as _apply_hash_patch,
+    )
+    _apply_hash_patch()
+
     app = TgParserApp()
     app.run()
+
+
+# Alias used by ``python -m tgparser.gui`` (see __main__.py).
+main = run_gui
 
 
 if __name__ == "__main__":

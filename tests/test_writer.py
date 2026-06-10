@@ -376,7 +376,7 @@ def test_get_last_message_id_from_sqlite(tmp_output_dir: Path, sample_messages: 
 
 def test_save_messages_markdown(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
     """Markdown export produces a readable .md file."""
-    fp = save_messages(sample_messages, tmp_output_dir, "@md", fmt="md")
+    fp = save_messages(sample_messages, tmp_output_dir, "@md", fmt="markdown")
     assert fp is not None
     assert fp.suffix == ".md"
     text = fp.read_text(encoding="utf-8")
@@ -387,8 +387,8 @@ def test_save_messages_markdown(tmp_output_dir: Path, sample_messages: list[Mess
     assert "Forwarded" in text  # message #2 is forwarded
 
 
-def test_save_messages_markdown_alias(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
-    """'markdown' is accepted as an alias for 'md'."""
+def test_save_messages_markdown_extension(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
+    """The canonical ``markdown`` format produces a ``.md`` file."""
     fp = save_messages(sample_messages, tmp_output_dir, "@alias", fmt="markdown")
     assert fp is not None
     assert fp.suffix == ".md"
@@ -440,16 +440,16 @@ def test_incremental_skips_known_ids(
     assert ids == {1, 2, 99}
 
 
-def test_incremental_md_format(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
+def test_incremental_markdown_format(tmp_output_dir: Path, sample_messages: list[Message]) -> None:
     """Incremental export also works in Markdown format."""
     fp = save_messages_incremental(
-        sample_messages, tmp_output_dir, "@mdinc", fmt="md"
+        sample_messages, tmp_output_dir, "@mdinc", fmt="markdown"
     )
     assert fp is not None
     text = fp.read_text(encoding="utf-8")
     assert "# @test_channel" in text
     # Second call: nothing new, no new file.
     fp2 = save_messages_incremental(
-        sample_messages, tmp_output_dir, "@mdinc", fmt="md"
+        sample_messages, tmp_output_dir, "@mdinc", fmt="markdown"
     )
     assert fp2 is None

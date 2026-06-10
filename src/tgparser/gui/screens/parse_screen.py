@@ -10,7 +10,7 @@ from typing import ClassVar
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.markup import escape
 from textual.reactive import reactive
 from textual.screen import Screen
@@ -102,6 +102,19 @@ class ParseScreen(Screen[None]):
     #parse-actions Button {
         margin: 0 1;
         min-width: 20;
+        min-height: 3;
+    }
+
+    #log-actions {
+        height: auto;
+        align-horizontal: center;
+        margin-bottom: 1;
+    }
+
+    #log-actions Button {
+        min-width: 20;
+        min-height: 3;
+        margin: 0 1;
     }
 
     #progress-section {
@@ -110,7 +123,7 @@ class ParseScreen(Screen[None]):
     }
 
     #parse-log {
-        height: 1fr;
+        height: auto;
         min-height: 8;
         border: solid $surface;
     }
@@ -135,7 +148,7 @@ class ParseScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
-        with Container(id="parse-container"):
+        with VerticalScroll(id="parse-container"):
             with Horizontal(id="parse-header"):
                 yield Button("\u2190 Back", id="btn-back-header", variant="default")
                 yield Static("\u25b6 [bold]Parse Channel[/]", id="parse-title")
@@ -144,7 +157,7 @@ class ParseScreen(Screen[None]):
                 with Horizontal(classes="input-row"):
                     yield Label("Channel:")
                     yield Input(
-                        placeholder="@username or t.me/...",
+                        placeholder="@username or t.me/... (use # for web URLs)",
                         id="channel-input",
                         value=self._channel,
                     )
@@ -202,6 +215,27 @@ class ParseScreen(Screen[None]):
             )
             yield Static("", id="status-message")
 
+    @staticmethod
+    def _normalize_channel(value: str) -> str:
+        """Insert a missing ``#`` in Telegram Web URLs and return the result.
+
+        ``#`` is not a special character for Textual's :class:`Input`
+        widget, so the field itself never strips it.  In practice users
+        often paste URLs that lost the fragment (share links, terminal
+        clipboard, etc.).  This helper makes the channel value canonical
+        without rejecting any input.
+        """
+        for prefix in (
+            "https://web.telegram.org/a/",
+            "https://web.telegram.org/k/",
+            "https://web.telegram.org/beta/",
+        ):
+            if value.startswith(prefix) and "#" not in value:
+                tail = value[len(prefix):]
+                if tail:
+                    return f"{prefix}#{tail}"
+        return value
+
     def on_mount(self) -> None:
         """Focus the channel input on mount."""
         self.query_one("#channel-input", Input).focus()
@@ -213,6 +247,12 @@ class ParseScreen(Screen[None]):
             return
 
         channel = self.query_one("#channel-input", Input).value.strip()
+        # UX helper: insert a missing "#" in Telegram Web URLs so the value
+        # displayed in the Input (and echoed in the log) is canonical.
+        normalized = ParseScreen._normalize_channel(channel)
+        if normalized != channel:
+            self.query_one("#channel-input", Input).value = normalized
+            channel = normalized
         channel_type = self.query_one("#channel-type-select", Select).value
 
         if not channel:

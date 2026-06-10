@@ -29,42 +29,13 @@ Thumbs.db
 .vibe/
 token
 
-# Local debug / exploration logs and helper scripts
+# Runtime / debug logs and helper scripts (none of this is
+# part of the project itself; keep it on developer machines only)
 *.log
+logs/*
+!logs/.gitkeep
 .tgparser_test_output/
 TgParser.spec
-explore_k.log
-scripts/au.txt
-scripts/build.log
-scripts/defs.txt
-scripts/dump_defs.py
-scripts/dump_defs.txt
-scripts/e.log
-scripts/explore_a.py
-scripts/explore_k.py
-scripts/find_init.py
-scripts/find_paths.py
-scripts/find_usages.py
-scripts/gi.log
-scripts/gui.log
-scripts/inc.err.log
-scripts/inc.log
-scripts/lc.txt
-scripts/lo.log
-scripts/login.log
-scripts/m.log
-scripts/parse.log
-scripts/parse_err.log
-scripts/paths.log
-scripts/pip.log
-scripts/pt.log
-scripts/push.log
-scripts/pytest.log
-scripts/r.log
-scripts/rel.log
-scripts/rel2.log
-scripts/rel_v.log
-scripts/test_login_a.py
-scripts/test_parse.py
-scripts/usages.log
-scripts/yaml.log
+
+# VibeIDE runtime files (changed every session)
+/.vibe/.window-lock.json

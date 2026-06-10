@@ -25,7 +25,7 @@ from tgparser.utils import setup_logging
 logger = logging.getLogger("tgparser")
 
 # Shared output-format choices
-_FMT_CHOICES = ["json", "csv", "txt", "md", "markdown", "sqlite"]
+_FMT_CHOICES = ["json", "csv", "txt", "markdown", "sqlite"]
 
 
 @click.group()
@@ -212,8 +212,9 @@ def parse_open(
 
     CHANNEL — channel username (e.g. @durov) or invite hash.
     """
-    effective_limit = limit or int(get_setting("message_limit", "100"))
-    effective_fmt = output_fmt or get_setting("output_format", "json")
+    _default_limit = get_setting("message_limit", "100")
+    effective_limit = limit or int(_default_limit or 100)
+    effective_fmt = output_fmt or get_setting("output_format", "json") or "json"
     if output_dir:
         effective_dir = Path(output_dir).expanduser()
         effective_dir.mkdir(parents=True, exist_ok=True)
@@ -295,12 +296,13 @@ def parse_closed(
 
     URL — channel link, e.g. https://t.me/durov or https://t.me/durov/123.
     """
-    effective_limit = limit or int(get_setting("message_limit", "100"))
-    effective_fmt = output_fmt or get_setting("output_format", "json")
-    effective_dir = output_dir or get_setting("output_dir", "data/output")
+    _default_limit = get_setting("message_limit", "100")
+    effective_limit = limit or int(_default_limit or 100)
+    effective_fmt = output_fmt or get_setting("output_format", "json") or "json"
+    effective_dir = output_dir or get_setting("output_dir", "data/output") or "data/output"
 
     click.echo(
-        f"🌐 Parsing closed channel '{url}' "
+        f"[parse-closed] '{url}' "
         f"(limit={effective_limit}, format={effective_fmt})"
         + (", incremental" if incremental else "")
         + "..."
@@ -618,22 +620,42 @@ async def _run_parse_closed(
     """Use WebParser (Playwright) to parse a closed channel."""
     try:
         web_parser = WebParser()
-        messages = await web_parser.parse(url=url, limit=limit)
+        # ``WebParser.parse`` is synchronous (it drives Playwright
+        # under the hood).  Its keyword is ``channel_url=`` and it
+        # has no ``close()`` method.  Run it in a worker thread so
+        # the asyncio loop stays responsive in the GUI / CLI.
+        messages = await asyncio.to_thread(
+            web_parser.parse,
+            channel_url=url,
+            limit=limit,
+        )
     except Exception as exc:
         click.echo(f"❌ Web parse failed: {exc}", err=True)
         raise SystemExit(1) from exc
-    finally:
-        if "web_parser" in locals():
-            await web_parser.close()
 
     if not messages:
         click.echo("ℹ️  No messages found (channel may be empty or inaccessible).")
     else:
+        # Prefer the parser-resolved channel name (e.g. "точка фарма")
+        # over the URL tail.  Fall back to the sanitised hash if the
+        # parser did not record a name on any of the messages.
+        # ``WebParser`` is already imported at module level — do NOT
+        # re-import it here or Python will shadow the binding and
+        # raise UnboundLocalError before we get this far.
+        from tgparser.utils import sanitize_dir_name
+
+        channel_name = next(
+            (m.channel for m in messages if m.channel),
+            None,
+        )
+        if not channel_name:
+            raw_hash = WebParser._extract_hash(url)
+            channel_name = sanitize_dir_name(raw_hash)
         if incremental:
             filepath = save_messages_incremental(
                 messages=messages,
                 output_dir=output_dir,
-                channel_name=url.rstrip("/").rsplit("/", 1)[-1],
+                channel_name=channel_name,
                 fmt=fmt,
                 db_path=db_path,
             )
@@ -641,7 +663,7 @@ async def _run_parse_closed(
             filepath = save_messages(
                 messages=messages,
                 output_dir=output_dir,
-                channel_name=url.rstrip("/").rsplit("/", 1)[-1],
+                channel_name=channel_name,
                 fmt=fmt,
                 db_path=db_path,
             )

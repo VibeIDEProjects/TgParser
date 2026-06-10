@@ -320,6 +320,31 @@ class WebParser:
     # Channel navigation
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _ensure_hash_fragment(channel_url: str) -> str:
+        """Make sure a Telegram Web URL has a ``#`` fragment.
+
+        Telegram Web's SPA router is keyed on the URL fragment.  When the
+        URL is opened without ``#`` (e.g. because it was pasted as
+        ``https://web.telegram.org/a/-100xxx``), the SPA treats the path
+        as a regular page and the channel never opens.  This helper
+        inserts the missing ``#`` so that ``page.goto`` lands on the
+        right channel.
+
+        Only Telegram Web URLs (https://web.telegram.org/{a,k,beta}/...)
+        are affected; other URL shapes are returned unchanged.
+        """
+        for prefix in (
+            "https://web.telegram.org/a/",
+            "https://web.telegram.org/k/",
+            "https://web.telegram.org/beta/",
+        ):
+            if channel_url.startswith(prefix) and "#" not in channel_url:
+                tail = channel_url[len(prefix):]
+                if tail:
+                    return f"{prefix}#{tail}"
+        return channel_url
+
     def _navigate_to_channel(self, page: Page, channel_url: str) -> str:
         """Open the channel's page and return its display name.
 
@@ -339,9 +364,11 @@ class WebParser:
         # Build the full URL.  We always go directly to the channel URL.
         hash_part = self._extract_hash(channel_url)
         if channel_url.startswith("https://web.telegram.org/"):
-            target_url = channel_url
+            target_url = self._ensure_hash_fragment(channel_url)
         else:
             target_url = f"{base}#{hash_part}"
+        if target_url != channel_url:
+            self._log_cb(f"  Inserted missing '#' fragment: {target_url!r}")
         self._log_cb(f"  page.goto({target_url!r})")
         page.goto(target_url, wait_until="domcontentloaded")
 
@@ -451,6 +478,17 @@ class WebParser:
 
         cb = getattr(self, "_log_cb", None) or (lambda m, _p=print: _p(m, flush=True))
 
+        # Disable the Telegram Web ``with-bottom-snap`` behaviour so
+        # our programmatic ``scrollTop = 0`` is not silently rolled
+        # back to the bottom of the virtualised list.
+        try:
+            page.add_style_tag(content=
+                ".MessageList { scroll-snap-type: none !important; "
+                "scroll-behavior: auto !important; }"
+            )
+        except Exception as exc:
+            logger.debug("add_style_tag failed: %s", exc)
+
         for attempt in range(max_scroll_attempts):
             batch = self._parse_message_elements(page, channel_name)
             new_messages = [m for m in batch if m.id not in seen_ids]
@@ -480,7 +518,7 @@ class WebParser:
                     max_scroll_attempts,
                     streak_no_new,
                 )
-                if streak_no_new >= 3:
+                if streak_no_new >= 20:
                     cb(
                         f"  Reached top of channel (no new messages for {streak_no_new} scrolls)"
                     )
@@ -489,7 +527,7 @@ class WebParser:
                 logger.info("Reached message limit (%d).", limit)
                 break
 
-            if streak_no_new >= 3:
+            if streak_no_new >= 20:
                 logger.info(
                     "No new messages for %d scrolls — reached top of channel.",
                     streak_no_new,
@@ -501,43 +539,114 @@ class WebParser:
         return all_messages[:limit]
 
     def _scroll_up(self, page: Page, delay_ms: int) -> None:
-        """Scroll the message container to its top to trigger lazy-load."""
+        """Scroll the message container upward to load older messages.
+
+        Telegram Web uses a column-reverse virtualised list where a
+        bare ``scrollTop = 0`` write is **ignored** by the lazy
+        loader — the React/InertiaJS layer listens to wheel events
+        and key presses instead.  This helper tries, in order:
+
+        1. Dispatch a real ``wheel`` event with negative ``deltaY``
+           on every plausible scroller.  This is the same signal a
+           physical mouse wheel emits, and is what TDesktop's Web
+           view actually listens for.
+        2. ``PageUp`` keyboard key — forces the native browser
+           scroll path that bypasses any custom inertia handling.
+        3. ``scrollBy(0, -large)`` and ``scrollTop = 0`` as final
+           fallbacks for the legacy ``bubbles`` / ``#column-center``
+           selectors.
+        """
+        sleep_s = max(delay_ms / 1000, 0.5)
         try:
             page.evaluate(
                 """() => {
-                    // Find the message list container, preferring the new
-                    // MiddleColumn over the legacy selectors.
+                    // Order matters: the LEFT sidebar also has
+                    // ``custom-scroll`` and is scrollable, so we
+                    // must prefer the right column's message list.
                     const selectors = [
+                        // New ``/a/`` frontend
+                        '.MessageList',
+                        '[class*="MessageList"]',
+                        '[class*="MiddleColumn"] [class*="MessageList"]',
+                        // Generic middle column descendants
                         '[class*="MiddleColumn"] [class*="scroller" i]',
                         '[class*="MiddleColumn"] [class*="Scroll" i]',
                         '[class*="MiddleColumn"] [class*="Container" i]',
                         '[class*="MiddleColumn"]',
+                        // Legacy ``/k/`` frontend
+                        '#column-center .bubbles',
                         '.bubbles',
                         '.messages-container',
                         '#column-center',
+                        // Final fallback: the chat-list sidebar
+                        // (better than nothing).
+                        '.chat-list',
                         '[data-list-id="chat"]',
                     ];
+                    let target = null;
                     for (const sel of selectors) {
                         const el = document.querySelector(sel);
-                        if (el) {
-                            // For virtualised lists the real scrollable
-                            // element is the parent scroller.
-                            let target = el;
-                            let parent = el.parentElement;
-                            while (parent && parent.scrollHeight > parent.clientHeight + 10) {
-                                target = parent;
-                                parent = parent.parentElement;
-                            }
-                            target.scrollTop = 0;
-                            return;
+                        if (!el) continue;
+                        // For virtualised lists the real scroller is
+                        // the closest ancestor that overflows.
+                        let cur = el;
+                        while (cur && (cur.scrollHeight <= cur.clientHeight + 50)) {
+                            cur = cur.parentElement;
+                            if (!cur) { cur = el; break; }
+                        }
+                        // Sanity: the chosen target must actually be
+                        // scrollable, otherwise a sidebar bubble
+                        // matching one of the broad class wildcards
+                        // would steal our scroll.
+                        if (cur && cur.scrollHeight > cur.clientHeight + 50) {
+                            target = cur;
+                            break;
                         }
                     }
+                    if (!target) target = document.scrollingElement || document.documentElement;
+                    // NOTE: Telegram Web's .MessageList uses
+                    // ``flex-direction: column-reverse`` so the
+                    // visual TOP (oldest messages) is at
+                    // ``scrollTop = scrollHeight`` and the visual
+                    // BOTTOM (newest) is at ``scrollTop = 0``.
+                    // We therefore set a **positive** scroll
+                    // value to move toward older messages.
+                    // 1) Jump straight to the top of the list.
+                    try { target.scrollTop = target.scrollHeight; } catch (e) {}
+                    // 2) Programmatic scrollBy in the same direction.
+                    try { target.scrollBy({ top: 5000, behavior: 'instant' }); } catch (e) {}
+                    // 3) Real wheel event with POSITIVE deltaY —
+                    //    this is what physical wheel-down emits,
+                    //    and column-reverse maps it to "older".
+                    try {
+                        const wheelEvt = new WheelEvent('wheel', {
+                            deltaY: 2400,
+                            deltaMode: 0,
+                            bubbles: true,
+                            cancelable: true,
+                        });
+                        target.dispatchEvent(wheelEvt);
+                    } catch (e) { /* noop */ }
+                    // 4) Window-level scroll (in case the document
+                    // body is the actual scroller).
+                    try { window.scrollBy(0, 2000); } catch (e) {}
+                    // 5) Final fallback: the old scrollTop = 0 in
+                    // case column direction is ever flipped.
+                    try { target.scrollTop = 0; } catch (e) {}
                 }"""
             )
-            time.sleep(max(delay_ms / 1000, 0.5))
+            # 4) Real keyboard — try multiple keys in case the
+            # column-reverse direction surprises the event handler.
+            for k in ("PageDown", "End", "Home", "PageUp"):
+                try:
+                    page.keyboard.press(k)
+                except Exception as exc:
+                    logger.debug("%s failed: %s", k, exc)
+
+            time.sleep(sleep_s)
         except Exception as exc:
             logger.warning("Scroll failed: %s", exc)
-            time.sleep(max(delay_ms / 1000, 0.5))
+            time.sleep(sleep_s)
 
     # ------------------------------------------------------------------
     # DOM → Message parsing

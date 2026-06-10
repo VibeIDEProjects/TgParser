@@ -24,6 +24,7 @@ from tgparser.utils import logger
 QR_WAIT_TIMEOUT_S = 120
 LOGIN_WAIT_TIMEOUT_S = 300
 QR_RETRY_COUNT = 3
+PASSWORD_FORM_TIMEOUT_S = 20
 
 
 class WebAuth:
@@ -243,54 +244,88 @@ class WebAuth:
         qr_canvas = page.query_selector("canvas.qr-canvas")
         if qr_canvas is None:
             logger.info("QR canvas not found — assuming already logged in.")
+        else:
+            # Wait for the QR canvas to disappear (user scanned QR and logged in)
+            logger.info("QR canvas found — waiting for it to disappear...")
+            try:
+                qr_canvas.wait_for_element_state("hidden", timeout=LOGIN_WAIT_TIMEOUT_S * 1000)
+                logger.info("Login confirmed — QR canvas hidden.")
+            except PwTimeout:
+                logger.warning("QR canvas did not become hidden within timeout — "
+                               "falling back to chat-list detection.")
+                # Fallback: check for any chat list element
+                chat_selectors = [
+                    ".chatlist",
+                    ".chat-list",
+                    ".chat_list",
+                    ".chats-container",
+                    ".dialogs",
+                    ".chat-item-container",
+                    ".im_dialog_wrap",
+                    ".chats-list",
+                    ".im_dialog",
+                    ".chat_item",
+                    ".messages-container",
+                    ".chat-tabs",
+                    ".sidebar",
+                    ".left_column",
+                    ".chat-content",
+                ]
+                seen = False
+                for sel in chat_selectors:
+                    try:
+                        page.wait_for_selector(sel, timeout=10_000)
+                        logger.info(
+                            "Login confirmed — chat list visible (selector='%s').", sel
+                        )
+                        seen = True
+                        break
+                    except PwTimeout:
+                        continue
+                if not seen:
+                    # If still nothing, check whether the QR canvas is now gone
+                    try:
+                        page.wait_for_selector("canvas.qr-canvas", state="detached", timeout=10_000)
+                        logger.info("Login confirmed — QR canvas detached.")
+                    except PwTimeout:
+                        raise PwTimeout(
+                            "Could not detect chat list or login completion within timeout."
+                        )
+
+        # After successful login, force the redirect to /a/ if Telegram
+        # left us on /k/ -- otherwise the 2FA form never appears.
+    def _ensure_a_frontend(self, page: Page) -> None:
+        """Make sure we are on the new /a/ frontend where the 2FA form lives.
+
+        Telegram Web's 2FA form (``#auth-password-form``) only exists on
+        ``/a/``.  After QR login the user can be left on ``/k/``, which
+        causes the password form to never appear and the auth flow to hang.
+        If we are still on ``/k/`` we force a navigation to ``/a/`` and
+        wait until the new SPA shell is loaded.
+        """
+        try:
+            current_url = page.url
+        except Exception as exc:
+            logger.warning("_ensure_a_frontend: cannot read page.url: %s", exc)
             return
 
-        # Wait for the QR canvas to disappear (user scanned QR and logged in)
-        logger.info("QR canvas found — waiting for it to disappear...")
-        try:
-            qr_canvas.wait_for_element_state("hidden", timeout=LOGIN_WAIT_TIMEOUT_S * 1000)
-        except PwTimeout:
-            logger.warning("QR canvas did not become hidden within timeout — "
-                           "falling back to chat-list detection.")
-            # Fallback: check for any chat list element
-            chat_selectors = [
-                ".chatlist",
-                ".chat-list",
-                ".chat_list",
-                ".chats-container",
-                ".dialogs",
-                ".chat-item-container",
-                ".im_dialog_wrap",
-                ".chats-list",
-                ".im_dialog",
-                ".chat_item",
-                ".messages-container",
-                ".chat-tabs",
-                ".sidebar",
-                ".left_column",
-                ".chat-content",
-            ]
-            for sel in chat_selectors:
-                try:
-                    page.wait_for_selector(sel, timeout=10_000)
-                    logger.info(
-                        "Login confirmed — chat list visible (selector='%s').", sel
-                    )
-                    return
-                except PwTimeout:
-                    continue
-            # If still nothing, check whether the QR canvas is now gone (maybe it was removed)
-            try:
-                page.wait_for_selector("canvas.qr-canvas", state="detached", timeout=10_000)
-                logger.info("Login confirmed — QR canvas detached.")
-                return
-            except PwTimeout:
-                pass
-            raise PwTimeout(
-                "Could not detect chat list or login completion within timeout."
-            )
+        if "/a/" in current_url:
+            return
+        if "/k/" not in current_url:
+            # Some other path (custom subdomain, /z/, etc.) - dont touch it.
+            logger.info("_ensure_a_frontend: unexpected URL %s, leaving as-is.", current_url)
+            return
 
-        logger.info("Login confirmed — QR canvas hidden.")
+        logger.info("Still on legacy /k/ frontend after login - navigating to /a/ so the 2FA form is available.")
+        try:
+            page.goto("https://web.telegram.org/a/", wait_until="domcontentloaded")
+            try:
+                page.wait_for_load_state("load", timeout=15_000)
+            except PwTimeout:
+                logger.warning("_ensure_a_frontend: load state timeout, continuing.")
+            time.sleep(1.0)
+        except Exception as exc:
+            logger.warning("_ensure_a_frontend: navigation failed: %s", exc)
 
     def _wait_for_password_if_needed(
         self, page: Page, password: str | None
@@ -299,15 +334,30 @@ class WebAuth:
 
         Telegram Web ``/a/`` shows ``#auth-password-form`` after a successful
         QR scan when the account has 2-Step Verification enabled.  If the
-        form doesn't appear within 5 seconds we assume 2FA is disabled.
+        form does not appear within ``PASSWORD_FORM_TIMEOUT_S`` seconds we
+        assume 2FA is disabled.
+
+        The new frontend can be slow to bootstrap after a navigation, so we
+        retry the wait once if the first attempt fails: this covers the
+        common case where Telegram keeps the user on ``/k/`` after scanning
+        the QR and our earlier redirect to ``/a/`` is still in flight.
         """
-        try:
+        def _wait_form() -> None:
             page.wait_for_selector(
-                "#auth-password-form", state="visible", timeout=5_000
+                "#auth-password-form", state="visible",
+                timeout=PASSWORD_FORM_TIMEOUT_S * 1000,
             )
+
+        try:
+            _wait_form()
         except PwTimeout:
-            logger.info("No 2FA password form detected — continuing.")
-            return
+            # Give the SPA one more chance by forcing a clean reload of /a/.
+            self._ensure_a_frontend(page)
+            try:
+                _wait_form()
+            except PwTimeout:
+                logger.info("No 2FA password form detected — continuing.")
+                return
 
         logger.info("2FA password form detected — entering password.")
         if not password:
@@ -330,6 +380,12 @@ class WebAuth:
             return
 
         try:
+            # Make sure the input is actually present before we try to fill
+            # it — the form container may be visible while the input is
+            # still mounting on slow machines.
+            page.wait_for_selector(
+                "#sign-in-password", state="visible", timeout=10_000,
+            )
             page.fill("#sign-in-password", password)
             time.sleep(0.3)
             page.press("#sign-in-password", "Enter")
